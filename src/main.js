@@ -97,8 +97,22 @@ class App {
     if (new URLSearchParams(location.search).has('autotest')) this.selftest()
   }
 
-  // Für den Entwicklungs-Autotest des Mods: Zustand melden und einen Dialog öffnen (Esc-Test)
+  // Für den Entwicklungs-Autotest des Mods: Zustand und jede Planänderung melden, F9 öffnet einen Dialog (Esc-Test)
   async selftest() {
+    const report = data => this.bridge.post('/api/selftest', JSON.stringify(data)).catch(() => {})
+    this.setProject(new Project()) // leerer Plan, damit die Zählung stimmt (nur in der Testwelt)
+    this.refreshAll()
+    const onChange = this.project.onChange
+    this.project.onChange = () => {
+      onChange()
+      const b = this.project.bounds()
+      const blocks = this.project.materials().reduce((n, [, c]) => n + c, 0)
+      report({ event: 'change', blocks, w: b ? b.x2 - b.x1 + 1 : 0, h: b ? b.z2 - b.z1 + 1 : 0 })
+    }
+    window.addEventListener('keydown', e => {
+      if (e.key === 'F9') this.confirm('Autotest', 'Esc schließt diesen Dialog, das zweite Esc den Editor.')
+    })
+    const r = this.canvas.getBoundingClientRect()
     const hidden = sel => { const el = $(sel); return !el || getComputedStyle(el).display === 'none' }
     const state = {
       inGame: this.inGame,
@@ -111,10 +125,12 @@ class App {
       view: { x: Math.round(this.view.cx), z: Math.round(this.view.cz) },
       currentY: this.currentY,
       player: this.player && { x: Math.round(this.player.x), y: Math.floor(this.player.y), z: Math.round(this.player.z) },
+      // Mitte der Zeichenfläche in Seitenpixeln, damit der Mod dort hinklicken kann
+      canvasCenter: [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)],
+      scale: this.view.scale,
+      zoom: window.devicePixelRatio,
     }
-    this.confirm('Autotest', 'Esc schließt diesen Dialog, das zweite Esc den Editor.')
-    state.dialogOpen = $('#dialog').open
-    await this.bridge.post('/api/selftest', JSON.stringify(state)).catch(() => {})
+    await report({ event: 'ready', ...state })
   }
 
   drawPlayer(ctx) {

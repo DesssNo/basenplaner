@@ -35,7 +35,7 @@ public class MCPainterScreen extends Screen {
     private static final long DOUBLE_ESC_MS = 400;
 
     private final String url;
-    private MCEFBrowser browser;
+    private EditorBrowser browser;
     private int ticks;
     private boolean zoomApplied;
     private long lastEsc;
@@ -81,7 +81,7 @@ public class MCPainterScreen extends Screen {
         if (browser != null || !MCEF.isInitialized()) return;
         installHandlers();
         MCPainter.LOGGER.info("MCPainter öffnet {}", url.replaceAll("token=[0-9a-f]+", "token=…"));
-        browser = MCEF.createBrowser(url, false);
+        browser = EditorBrowser.create(url);
         // Strg + / Strg − / Strg 0 zoomen, Strg R lädt neu
         browser.useBrowserControls(true);
         resizeBrowser();
@@ -201,21 +201,21 @@ public class MCPainterScreen extends Screen {
 
     @Override
     public void mouseMoved(double x, double y) {
-        if (browser != null) browser.sendMouseMove(px(x), py(y));
+        if (browser != null) browser.mouseMove(px(x), py(y), modifiers());
     }
 
     @Override
     public boolean mouseClicked(double x, double y, int button) {
         if (browser == null) return false;
         browser.setFocus(true);
-        browser.sendMousePress(px(x), py(y), button);
+        browser.mousePress(px(x), py(y), button, modifiers());
         return true;
     }
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
         if (browser == null) return false;
-        browser.sendMouseRelease(px(x), py(y), button);
+        browser.mouseRelease(px(x), py(y), button, modifiers());
         return true;
     }
 
