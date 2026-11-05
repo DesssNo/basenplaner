@@ -229,6 +229,7 @@ class App {
     this.drawSymmetry(ctx)
     this.drawHover(ctx)
     this.drawMeasure(ctx)
+    this.drawTpTarget(ctx)
     const info = $('#optionsbar .info')
     if (info) info.textContent = this.tool.info?.(this) ?? ''
   }
@@ -597,8 +598,9 @@ class App {
     }
     if (t === 'picker') parts.push('<span class="label">Klick auf einen Block übernimmt ihn in die Hotbar</span>')
     if (t === 'zone') parts.push('<span class="label">Rechteck aufziehen und benennen</span>')
+    if (t === 'teleport') parts.push('<span class="label">Klick auf einen Block → Teleport-Befehl für Minecraft kopieren</span>')
     if (t === 'hand') parts.push('<span class="label">Tipp: Leertaste oder mittlere Maustaste verschiebt immer, Mausrad zoomt</span>')
-    if (!['hand', 'picker', 'measure', 'zone'].includes(t)) {
+    if (!['hand', 'picker', 'measure', 'zone', 'teleport'].includes(t)) {
       parts.push(`<span class="sep"></span><span class="label">Symmetrie</span>
         <button data-opt-toggle="symX" class="${o.symX ? 'on' : ''}" title="Links/rechts spiegeln (X)">⇆ X</button>
         <button data-opt-toggle="symZ" class="${o.symZ ? 'on' : ''}" title="Oben/unten spiegeln (Z)">⇅ Z</button>
@@ -972,6 +974,70 @@ class App {
     }
   }
 
+  // ---------- teleport ----------
+  // Commands for a clicked block; you land in the middle of the block, standing on it if one is planned there
+  tpCommands(c) {
+    const y = this.currentY + (this.project.get(this.currentY, c.x, c.z) ? 1 : 0)
+    const x = c.x + 0.5, z = c.z + 0.5
+    const nx = Math.floor(c.x / 8) + 0.5, nz = Math.floor(c.z / 8) + 0.5
+    return [
+      ['TP-Befehl kopieren', `/tp @s ${x} ${y} ${z}`, `auf Ebene Y ${y}`],
+      ['TP, Höhe beibehalten', `/tp @s ${x} ~ ${z}`, 'gut beim Fliegen'],
+      ['TP in den Nether (gleiche Stelle)', `/execute in minecraft:the_nether run tp @s ${nx} ~ ${nz}`, `Nether X ${nx - 0.5}, Z ${nz - 0.5}`],
+      ['Nur Koordinaten kopieren', `${c.x} ${y} ${c.z}`, ''],
+    ]
+  }
+
+  showTpMenu(c, e) {
+    this.closeTpMenu()
+    this.tpCell = c
+    const menu = document.createElement('div')
+    menu.id = 'tp-menu'
+    menu.innerHTML = `<div class="head">X ${c.x} · Y ${this.currentY} · Z ${c.z}</div>` + this.tpCommands(c).map(([label, cmd, hint], i) =>
+      `<button data-i="${i}" class="${i ? '' : 'primary'}"><span>${esc(label)}</span><code>${esc(cmd)}</code>${hint ? `<small>${esc(hint)}</small>` : ''}</button>`).join('')
+    $('#stage').appendChild(menu)
+    const r = $('#stage').getBoundingClientRect(), m = menu.getBoundingClientRect()
+    menu.style.left = Math.max(8, Math.min(e.clientX - r.left + 12, r.width - m.width - 8)) + 'px'
+    menu.style.top = Math.max(8, Math.min(e.clientY - r.top + 12, r.height - m.height - 8)) + 'px'
+    menu.onpointerdown = ev => ev.stopPropagation()
+    menu.onclick = ev => {
+      const b = ev.target.closest('button')
+      if (!b) return
+      const cmd = this.tpCommands(c)[+b.dataset.i][1]
+      this.copyText(cmd).then(ok => this.toast(ok ? `Kopiert: ${cmd} – im Spiel mit T den Chat öffnen und einfügen (Strg+V).` : 'Kopieren nicht möglich – bitte manuell abschreiben: ' + cmd, 5000))
+      this.closeTpMenu()
+    }
+    this.redraw()
+  }
+
+  closeTpMenu() {
+    if (!this.tpCell) return
+    this.tpCell = null
+    $('#tp-menu')?.remove()
+    this.redraw()
+  }
+
+  drawTpTarget(ctx) {
+    if (!this.tpCell) return
+    const [x, y, w, h] = this.rectScreen({ x1: this.tpCell.x, z1: this.tpCell.z, x2: this.tpCell.x, z2: this.tpCell.z })
+    ctx.strokeStyle = '#ffd34e'; ctx.lineWidth = 2
+    ctx.strokeRect(x - 1, y - 1, Math.max(w, 4) + 2, Math.max(h, 4) + 2)
+  }
+
+  async copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text)
+      return true
+    } catch {
+      // Fallback for file:// pages where the async clipboard API may be unavailable
+      const ta = Object.assign(document.createElement('textarea'), { value: text })
+      document.body.appendChild(ta); ta.select()
+      const ok = document.execCommand('copy')
+      ta.remove()
+      return ok
+    }
+  }
+
   // ---------- dialogs ----------
   dialog(title, body, buttons) {
     const dlg = $('#dialog')
@@ -1036,6 +1102,7 @@ class App {
     const c = this.canvas
     c.addEventListener('contextmenu', e => e.preventDefault())
     c.addEventListener('pointerdown', e => {
+      this.closeTpMenu()
       c.setPointerCapture(e.pointerId)
       const cell = this.cellAt(e)
       if (e.button === 1 || this.spaceDown || this.tool.pan) {
@@ -1116,6 +1183,7 @@ class App {
       if (e.key === ' ') { this.spaceDown = true; this.canvas.style.cursor = 'grab'; e.preventDefault(); return }
       if (e.key === 'PageUp') { e.preventDefault(); return this.setY(this.currentY + 1) }
       if (e.key === 'PageDown') { e.preventDefault(); return this.setY(this.currentY - 1) }
+      if (e.key === 'Escape' && this.tpCell) { this.closeTpMenu(); return }
       if (e.key === 'Escape') { this.dropFloating(); this.selection = null; this.tool.a = null; this.active = null; this.redraw(); return }
       if (e.key === 'Enter') { this.dropFloating(); return }
       if (e.key === 'Delete' || e.key === 'Backspace') { this.deleteSelection(); return }

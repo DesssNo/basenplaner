@@ -24,6 +24,7 @@ Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Sc
 |---|---|
 | B / E / L / R / O / G | Stift / Radierer / Linie / Rechteck / Kreis / Füllen |
 | M / I / U / T / H | Auswahl / Pipette / Messen / Zone / Hand |
+| P | Teleport-Befehl: Klick auf einen Block kopiert `/tp @s X Y Z` (auch Nether-Variante) |
 | 1–9 | Hotbar-Slot |
 | Bild auf / Bild ab | Ebene höher / tiefer |
 | [ / ] | Pinsel kleiner / größer |

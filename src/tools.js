@@ -168,4 +168,8 @@ export const TOOLS = [
     preview() { return null },
     rect() { return this.a ? { x1: Math.min(this.a.x, this.b.x), z1: Math.min(this.a.z, this.b.z), x2: Math.max(this.a.x, this.b.x), z2: Math.max(this.a.z, this.b.z) } : null },
   },
+  {
+    id: 'teleport', name: 'Teleport-Befehl', key: 'p',
+    down(app, c, e) { app.showTpMenu(c, e) },
+  },
 ]
