@@ -30,7 +30,7 @@ class App {
     this.hotbar = ['stone_bricks', 'oak_planks', 'spruce_log', 'glass', 'smooth_stone', 'deepslate_tiles', 'lantern', 'chest', 'water'].map(id => 'minecraft:' + id)
     this.slot = 0
     this.tool = TOOLS.find(t => t.id === 'pencil')
-    this.options = { brush: 1, round: false, filled: false, sides: 6, rotated: false, symX: false, symZ: false, sym: { x: 0, z: 0 }, allLayers: false }
+    this.options = { brush: 1, round: false, filled: false, sides: 6, rotated: false, symX: false, symZ: false, sym: { x: 0, z: 0 }, allLayers: false, snap: true }
     this.settings = { grid: true, chunks: true, biomes: true, relief: true, alpha: 0.8, slime: false, ghost: true }
     this.selection = null
     this.floating = null
@@ -225,6 +225,7 @@ class App {
     this.drawZones(ctx)
     this.drawFloating(ctx)
     this.drawSelection(ctx)
+    this.drawGuides(ctx)
     this.drawPreview(ctx)
     this.drawSymmetry(ctx)
     this.drawHover(ctx)
@@ -461,6 +462,93 @@ class App {
     return f
   }
 
+  // Things a moved selection can line up with: each separate build (connected blocks) and each zone
+  snapTargets(f) {
+    const rects = this.project.zones.map(z => ({ x1: z.x1, z1: z.z1, x2: z.x2, z2: z.z2 }))
+    const layers = f.allLayers ? [...this.project.layers.values()] : [this.project.layer(this.currentY)].filter(Boolean)
+    const cells = layers.reduce((n, l) => n + l.count, 0)
+    if (cells > 300_000) {
+      // Too big to split into builds; use the overall outline only
+      for (const l of layers) { const b = l.bounds(); if (b) rects.push(b) }
+      return rects
+    }
+    const filled = new Set()
+    for (const l of layers) for (const [x, z] of l.cells()) filled.add(x + ',' + z)
+    const seen = new Set()
+    for (const key of filled) {
+      if (seen.has(key)) continue
+      seen.add(key)
+      const [sx, sz] = key.split(',').map(Number)
+      const r = { x1: sx, z1: sz, x2: sx, z2: sz }
+      const stack = [[sx, sz]]
+      while (stack.length) {
+        const [x, z] = stack.pop()
+        if (x < r.x1) r.x1 = x; if (x > r.x2) r.x2 = x; if (z < r.z1) r.z1 = z; if (z > r.z2) r.z2 = z
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const k = (x + dx) + ',' + (z + dz)
+            if (filled.has(k) && !seen.has(k)) { seen.add(k); stack.push([x + dx, z + dz]) }
+          }
+        }
+      }
+      rects.push(r)
+    }
+    return rects
+  }
+
+  // Photoshop-style smart guides: snap edges/centers of the floating selection to other builds and draw pink lines
+  snapFloating(free) {
+    this.guides = []
+    const f = this.floating
+    if (!f || !this.options.snap || free) return
+    f.targets ??= this.snapTargets(f)
+    const tol = Math.max(1, Math.round(8 / this.view.scale))
+    // Lines as [position, kind] in block-edge units: start edge, center, end edge
+    const lines = (a1, a2) => [[a1, 'start'], [(a1 + a2 + 1) / 2, 'center'], [a2 + 1, 'end']]
+    for (const axis of ['x', 'z']) {
+      const [p, size] = axis === 'x' ? [f.x, f.w] : [f.z, f.h]
+      let best = null
+      for (const t of f.targets) {
+        for (const [tp] of lines(t[axis + '1'], t[axis + '2'])) {
+          for (const [fp] of lines(p, p + size - 1)) {
+            const d = tp - fp
+            if (Number.isInteger(d) && Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best))) best = d
+          }
+        }
+      }
+      if (best === null) continue
+      if (axis === 'x') f.x += best; else f.z += best
+    }
+    // Draw a guide for every line that now matches exactly
+    const fr = { x1: f.x, z1: f.z, x2: f.x + f.w - 1, z2: f.z + f.h - 1 }
+    for (const axis of ['x', 'z']) {
+      const other = axis === 'x' ? 'z' : 'x'
+      for (const t of f.targets) {
+        for (const [tp] of lines(t[axis + '1'], t[axis + '2'])) {
+          if (!lines(fr[axis + '1'], fr[axis + '2']).some(([fp]) => fp === tp)) continue
+          this.guides.push({ axis, at: tp, from: Math.min(t[other + '1'], fr[other + '1']), to: Math.max(t[other + '2'], fr[other + '2']) + 1 })
+        }
+      }
+    }
+  }
+
+  drawGuides(ctx) {
+    if (!this.guides?.length || !this.floating) return
+    ctx.strokeStyle = '#ff2bd6'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    for (const g of this.guides) {
+      if (g.axis === 'x') {
+        const [x, z1] = this.toScreen(g.at, g.from), [, z2] = this.toScreen(g.at, g.to)
+        ctx.moveTo(Math.round(x) + 0.5, z1 - 8); ctx.lineTo(Math.round(x) + 0.5, z2 + 8)
+      } else {
+        const [x1, z] = this.toScreen(g.from, g.at), [x2] = this.toScreen(g.to, g.at)
+        ctx.moveTo(x1 - 8, Math.round(z) + 0.5); ctx.lineTo(x2 + 8, Math.round(z) + 0.5)
+      }
+    }
+    ctx.stroke()
+  }
+
   dropFloating() {
     const f = this.floating
     if (!f) return
@@ -501,7 +589,7 @@ class App {
     // keep vertical offsets relative to the layer you paste on
     const cells = clip.cells.map(([dx, dz, y, v]) => [dx, dz, y - clip.baseY + this.currentY, v])
     this.setTool('select')
-    this.floating = { ...clip, x: at.x, z: at.z, baseY: this.currentY, cells }
+    this.floating = { ...clip, x: at.x, z: at.z, baseY: this.currentY, cells, targets: undefined }
     this.toast('Eingefügt – ziehen zum Platzieren, Enter oder Klick daneben zum Absetzen.')
   }
 
@@ -597,6 +685,7 @@ class App {
     if (t === 'fill') parts.push('<span class="label">Füllt die zusammenhängende Fläche gleicher Blöcke auf dieser Ebene</span>')
     if (t === 'select') {
       parts.push(`<label><input type="checkbox" data-opt="allLayers" ${o.allLayers ? 'checked' : ''}> Alle Ebenen</label>
+        <label title="Beim Verschieben an Kanten und Mitten anderer Bauten einrasten (Alt halten = frei)"><input type="checkbox" data-opt="snap" ${o.snap ? 'checked' : ''}> Hilfslinien</label>
         <button data-cmd="copy" title="Strg+C">Kopieren</button><button data-cmd="cut" title="Strg+X">Ausschneiden</button>
         <button data-cmd="paste" title="Strg+V">Einfügen</button><button data-cmd="delete" title="Entf">Löschen</button>
         <button data-cmd="rotate" title="Drehen (Q)">⟳ 90°</button><button data-cmd="flipX" title="Spiegeln links/rechts">⇆</button>

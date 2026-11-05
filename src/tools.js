@@ -156,17 +156,18 @@ export const TOOLS = [
       app.selection = { x1: c.x, z1: c.z, x2: c.x, z2: c.z }
       app.redraw()
     },
-    move(app, c) {
+    move(app, c, e) {
       if (this.drag && app.floating) {
         app.floating.x = c.x - this.drag.x
         app.floating.z = c.z - this.drag.z
+        app.snapFloating(e?.altKey)
         app.redraw()
       } else if (this.a) {
         app.selection = { x1: Math.min(this.a.x, c.x), z1: Math.min(this.a.z, c.z), x2: Math.max(this.a.x, c.x), z2: Math.max(this.a.z, c.z) }
         app.redraw()
       }
     },
-    up() { this.drag = null; this.a = null },
+    up(app) { this.drag = null; this.a = null; app.guides = [] },
     info(app) {
       const s = app.floating ? { x1: app.floating.x, z1: app.floating.z, x2: app.floating.x + app.floating.w - 1, z2: app.floating.z + app.floating.h - 1 } : app.selection
       return s ? `${s.x2 - s.x1 + 1} × ${s.z2 - s.z1 + 1}` : ''
