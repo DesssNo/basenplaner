@@ -52,5 +52,12 @@ npm run build
 - `tools/test-export.mjs`: liest die exportierten Schematics mit einem unabhängigen NBT-Leser zurück.
 - `tools/test-import.mjs`: Import-Tests (Round-Trip, Sponge v3, Strukturdateien, Litematic mit mehreren Regionen).
 
+## Mod installieren (MCPainter, in Arbeit)
+Der Mod liegt in [`mod/`](mod) (NeoForge 1.21.1). Stand: Etappe 0, ein Testbildschirm, noch ohne Editor.
+1. Die Jar bauen (`cd mod`, dann `gradlew build` → `mod/build/libs/mcpainter-*.jar`) oder als Artefakt aus dem Workflow „Mod bauen“ laden.
+2. Die Jar und [MCEF](https://www.curseforge.com/minecraft/mc-mods/mcef/files) `2.1.6-1.21.1` für NeoForge in den `mods/`-Ordner der Instanz legen.
+3. Beim ersten Start lädt MCEF Chromium herunter (ca. 100 MB).
+4. In einer Welt: Esc → Button „MCPainter“ oben links. Eine Taste ist standardmäßig nicht belegt, man kann sie unter Optionen → Steuerung festlegen.
+
 ## Geplant
 - [MCPainter: der Basenplaner direkt in Minecraft](docs/MCPainter-Konzept.md): NeoForge-1.21.1-Mod mit Editor im Spiel, Bauen direkt in der Welt, Biomen und Blöcken aus dem Modpack. Noch nicht gebaut; Umsetzungsplan in [`AUFTRAG-MCPAINTER.md`](AUFTRAG-MCPAINTER.md).

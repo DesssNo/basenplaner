@@ -1,0 +1,36 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+issueTrackerURL="https://github.com/DesssNo/basenplaner/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/DesssNo/basenplaner"
+authors="DesssNo"
+description='''
+Der Basenplaner direkt in Minecraft: Basen im Editor zeichnen und in der Welt bauen lassen.
+'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="[${neo_version},)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# Chromium im Spiel. Nur der Client braucht es.
+[[dependencies.${mod_id}]]
+    modId="mcef"
+    type="required"
+    versionRange="[${mcef_version},)"
+    ordering="AFTER"
+    side="CLIENT"

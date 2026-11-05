@@ -1,0 +1,27 @@
+name: Mod bauen
+
+on:
+  push:
+    paths: ['mod/**', 'src/**', '.github/workflows/mod.yml']
+  pull_request:
+    paths: ['mod/**', 'src/**', '.github/workflows/mod.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mod
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew && ./gradlew build --console=plain
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcpainter-jar
+          path: mod/build/libs/mcpainter-*.jar
