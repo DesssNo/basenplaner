@@ -30,10 +30,28 @@ function rotation16(r, kind) {
   return (24 - r) % 16
 }
 
+// Standardzustände von Minecraft (1.21) für ausrichtbare Blöcke. Die Palette enthält z. B. nur "oak_stairs";
+// im Spiel heißt das facing=north. Ohne diese Angabe gäbe es beim Drehen nichts zu drehen.
+const DEFAULTS = [
+  [/_wall_(sign|hanging_sign|banner|head|skull)$|wall_torch$/, 'facing', 'north'],
+  [/_(sign|hanging_sign|banner|head|skull)$/, 'rotation', '0'],
+  [/^observer$/, 'facing', 'south'],
+  [/^crafter$/, 'orientation', 'north_up'],
+  [/_(stairs|trapdoor|door|fence_gate|bed|glazed_terracotta)$|^(trapped_|ender_)?chest$|^(blast_)?furnace$|^(smoker|barrel|dispenser|dropper|(sticky_)?piston|lectern|loom|stonecutter|beehive|bee_nest|carved_pumpkin|jack_o_lantern|ladder|(chipped_|damaged_)?anvil|grindstone|(soul_)?campfire|repeater|comparator|bell|chiseled_bookshelf|decorated_pot|vault|calibrated_sculk_sensor)$/, 'facing', 'north'],
+]
+
+function withDefaults(base, props) {
+  const name = base.replace(/^minecraft:/, '')
+  const d = DEFAULTS.find(([re]) => re.test(name))
+  if (d && !props.some(([k]) => k === d[1])) props.push([d[1], d[2]])
+  return props
+}
+
 export function transformState(id, kind) {
-  const m = /^([^[]+)\[(.*)\]$/.exec(id)
+  const m = /^([^[]+)(?:\[(.*)\])?$/.exec(id)
   if (!m) return id
-  const props = m[2].split(',').map(kv => kv.split('='))
+  const props = withDefaults(m[1], m[2] ? m[2].split(',').map(kv => kv.split('=')) : [])
+  if (!props.length) return id
   const mirror = kind !== 'rotate'
   const out = props.map(([k, v]) => {
     // Verbindungen (Zäune, Mauern, Scheiben, Ranken, Redstone, Pilzblöcke): Schlüssel tauschen

@@ -32,6 +32,20 @@ eq('minecraft:hopper[enabled=true,facing=down]', 'rotate', 'minecraft:hopper[ena
 eq('minecraft:stone', 'rotate', 'minecraft:stone')
 eq('minecraft:oak_slab[type=bottom,waterlogged=false]', 'flipX', 'minecraft:oak_slab[type=bottom,waterlogged=false]')
 
+// Palette-Blöcke ohne Zustand: Minecrafts Standardrichtung wird angenommen und mitgedreht
+eq('minecraft:oak_stairs', 'rotate', 'minecraft:oak_stairs[facing=east]')
+eq('minecraft:oak_stairs', 'flipZ', 'minecraft:oak_stairs[facing=south]')
+eq('minecraft:oak_stairs[half=top]', 'rotate', 'minecraft:oak_stairs[facing=east,half=top]')
+eq('minecraft:chest', 'rotate', 'minecraft:chest[facing=east]')
+eq('minecraft:observer', 'rotate', 'minecraft:observer[facing=west]')
+eq('minecraft:oak_sign', 'rotate', 'minecraft:oak_sign[rotation=4]')
+eq('minecraft:oak_wall_sign', 'rotate', 'minecraft:oak_wall_sign[facing=east]')
+eq('minecraft:oak_trapdoor', 'flipX', 'minecraft:oak_trapdoor[facing=north]')
+eq('minecraft:pumpkin', 'rotate', 'minecraft:pumpkin')
+eq('minecraft:stone_bricks', 'rotate', 'minecraft:stone_bricks')
+eq('minecraft:oak_log', 'rotate', 'minecraft:oak_log')
+check(times('minecraft:oak_stairs', 'rotate', 4) === 'minecraft:oak_stairs[facing=north]', '4× drehen ohne Zustand ergibt wieder Norden')
+
 const s = 'minecraft:oak_stairs[facing=north,half=bottom,shape=outer_left]'
 check(times(s, 'rotate', 4) === s, '4× drehen ergibt wieder den Ausgangszustand')
 check(times(s, 'flipX', 2) === s && times(s, 'flipZ', 2) === s, '2× spiegeln ergibt wieder den Ausgangszustand')
