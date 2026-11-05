@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basenplaner</title>
+<style>/*STYLE*/</style>
+</head>
+<body>
+<header id="topbar">
+  <div class="brand"><span class="logo"></span>Basenplaner</div>
+  <input id="project-name" class="name" spellcheck="false" title="Name des Plans">
+  <div class="group">
+    <button data-action="new">Neu</button>
+    <button data-action="open" title="Plan öffnen (.basenplan.json)">Öffnen</button>
+    <button data-action="import" title="Schematic importieren (.schem, .litematic, .nbt) – oder Datei auf die Karte ziehen">Importieren</button>
+    <button data-action="save" title="Strg+S">Speichern</button>
+  </div>
+  <div class="group">
+    <button data-action="undo" class="icon" title="Rückgängig (Strg+Z)"></button>
+    <button data-action="redo" class="icon" title="Wiederholen (Strg+Y)"></button>
+  </div>
+  <div class="spacer"></div>
+  <button data-action="3d">3D-Ansicht</button>
+  <button data-action="materials">Materialliste</button>
+  <button data-action="png">Bild (PNG)</button>
+  <button data-action="export" class="primary">Als Schematic exportieren</button>
+</header>
+
+<div id="optionsbar"></div>
+
+<main>
+  <nav id="toolbar"></nav>
+  <div id="stage">
+    <canvas id="canvas"></canvas>
+    <div id="hotbar"></div>
+    <div id="map-status"></div>
+    <div id="toast"></div>
+  </div>
+  <aside id="sidebar">
+    <details open>
+      <summary>Ebene (Y-Höhe)</summary>
+      <div class="row layer-picker">
+        <button data-action="layer-down" title="Eine Ebene tiefer (Bild ab)">▼</button>
+        <label>Y <input id="layer-y" type="number" min="-64" max="319"></label>
+        <button data-action="layer-up" title="Eine Ebene höher (Bild auf)">▲</button>
+      </div>
+      <ul id="layer-list"></ul>
+      <div class="row wrap">
+        <button data-action="layer-copy-up" title="Ebene nach oben kopieren und hochgehen">Kopie nach oben</button>
+        <button data-action="layer-extrude" title="Ebene mehrfach nach oben kopieren (z. B. für Wände)">Hochziehen…</button>
+        <button data-action="layer-clear">Leeren</button>
+      </div>
+      <label class="check"><input type="checkbox" id="opt-ghost"> Ebenen darunter durchscheinen lassen</label>
+    </details>
+
+    <details open>
+      <summary>Blöcke</summary>
+      <div id="current-block"></div>
+      <input id="block-search" type="search" placeholder="Block suchen …">
+      <div id="palette"></div>
+      <div class="row">
+        <input id="custom-block" placeholder="Eigene ID, z. B. oak_stairs[facing=east]" spellcheck="false">
+        <button data-action="custom-block">OK</button>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Welt &amp; Seed</summary>
+      <div class="row">
+        <input id="seed" placeholder="Seed eingeben" spellcheck="false">
+        <button data-action="seed" class="primary">Laden</button>
+      </div>
+      <p class="hint">Java Edition 26.3 · Oberwelt. Biome sind exakt, die Höhe ist eine Schätzung.</p>
+      <label class="check"><input type="checkbox" id="opt-biomes"> Biomkarte</label>
+      <label class="check"><input type="checkbox" id="opt-relief"> Geländerelief</label>
+      <label class="slider">Deckkraft <input type="range" id="opt-alpha" min="0.1" max="1" step="0.05"></label>
+      <label class="check"><input type="checkbox" id="opt-slime"> Slime-Chunks</label>
+      <label class="check"><input type="checkbox" id="opt-chunks"> Chunk- und Regionsgrenzen</label>
+      <label class="check"><input type="checkbox" id="opt-grid"> Blockraster</label>
+      <div class="row goto">
+        <input id="goto-x" type="number" placeholder="X">
+        <input id="goto-z" type="number" placeholder="Z">
+        <button data-action="goto">Gehe zu</button>
+      </div>
+    </details>
+
+    <details open>
+      <summary>Zonen</summary>
+      <p class="hint">Mit dem Zonen-Werkzeug (T) Bereiche wie „Lager“ oder „Farmen“ markieren. Zonen sind nur Notizen und landen nicht in der Schematic.</p>
+      <ul id="zone-list"></ul>
+    </details>
+  </aside>
+</main>
+
+<footer id="status"></footer>
+
+<dialog id="dialog"><form method="dialog"><h2></h2><div class="body"></div><div class="buttons"></div></form></dialog>
+<input type="file" id="file-input" accept=".json,.basenplan" hidden>
+<input type="file" id="import-input" accept=".schem,.schematic,.litematic,.nbt" hidden>
+<script>/*SCRIPT*/</script>
+</body>
+</html>
