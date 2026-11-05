@@ -170,7 +170,7 @@ function report() {
   return fetch('/api/selftest', { method: 'POST', headers: { 'X-MCPainter-Token': token }, body: JSON.stringify(out) })
 }
 document.getElementById('send').addEventListener('click', () => report().then(() => { document.getElementById('send').textContent = 'Gesendet ✓' }))
-setTimeout(report, 12000)
+setTimeout(report, 15000)
 </script>
 </body>
 </html>

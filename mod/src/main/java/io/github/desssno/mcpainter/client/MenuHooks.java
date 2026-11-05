@@ -1,14 +1,11 @@
 package io.github.desssno.mcpainter.client;
 
-import com.cinemamod.mcef.MCEF;
 import com.mojang.blaze3d.platform.InputConstants;
-import io.github.desssno.mcpainter.MCPainter;
 import io.github.desssno.mcpainter.bridge.BridgeServer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.PauseScreen;
-import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -25,10 +22,6 @@ public final class MenuHooks {
     public static final KeyMapping OPEN_KEY = new KeyMapping(
             "key.mcpainter.open", KeyConflictContext.IN_GAME,
             InputConstants.UNKNOWN, "key.categories.mcpainter");
-
-    /** Nur für die Entwicklung: {@code -Dmcpainter.autotest=true} öffnet die Testseite und beendet danach das Spiel. */
-    static final boolean AUTOTEST = Boolean.getBoolean("mcpainter.autotest");
-    private static boolean autotestStarted;
 
     private MenuHooks() {
     }
@@ -49,16 +42,7 @@ public final class MenuHooks {
         while (OPEN_KEY.consumeClick()) {
             if (mc.screen == null) open();
         }
-        // Autotest erst, wenn MCEF fertig ist (beim ersten Start lädt es Chromium herunter)
-        if (AUTOTEST && !autotestStarted && mc.screen instanceof TitleScreen && MCEF.isInitialized()) {
-            autotestStarted = true;
-            MCPainter.LOGGER.info("MCPainter-Autotest: öffne Testseite");
-            BridgeServer.get().onSelftest(result -> mc.execute(() -> {
-                MCPainter.LOGGER.info("MCPainter-Autotest fertig, Spiel wird beendet");
-                mc.stop();
-            }));
-            open();
-        }
+        DevAutotest.tick(mc);
     }
 
     private static void onScreenInit(ScreenEvent.Init.Post event) {

@@ -3,6 +3,7 @@ package io.github.desssno.mcpainter.bridge;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import io.github.desssno.mcpainter.MCPainter;
+import net.neoforged.fml.ModList;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +12,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.util.HexFormat;
 import java.util.Map;
@@ -126,20 +129,39 @@ public final class BridgeServer {
                 return;
             }
             if (path.endsWith("/")) path += "index.html";
-            try (InputStream in = BridgeServer.class.getResourceAsStream("/web" + path)) {
-                if (in == null) {
-                    send(ex, 404, "text/plain; charset=utf-8", "Nicht gefunden: " + path);
-                    return;
-                }
-                byte[] data = in.readAllBytes();
-                String ext = path.substring(path.lastIndexOf('.') + 1);
-                ex.getResponseHeaders().set("Content-Type", MIME.getOrDefault(ext, "application/octet-stream"));
-                ex.getResponseHeaders().set("Cache-Control", "no-store");
-                ex.sendResponseHeaders(200, data.length);
-                try (OutputStream out = ex.getResponseBody()) {
-                    out.write(data);
-                }
+            byte[] data = readWebResource(path);
+            if (data == null) {
+                MCPainter.LOGGER.warn("MCPainter-Brücke: GET {} → 404", path);
+                send(ex, 404, "text/plain; charset=utf-8", "Nicht gefunden: " + path);
+                return;
             }
+            MCPainter.LOGGER.info("MCPainter-Brücke: GET {} → 200 ({} Bytes)", path, data.length);
+            String ext = path.substring(path.lastIndexOf('.') + 1);
+            ex.getResponseHeaders().set("Content-Type", MIME.getOrDefault(ext, "application/octet-stream"));
+            ex.getResponseHeaders().set("Cache-Control", "no-store");
+            ex.sendResponseHeaders(200, data.length);
+            try (OutputStream out = ex.getResponseBody()) {
+                out.write(data);
+            }
+        } catch (IOException | RuntimeException e) {
+            MCPainter.LOGGER.error("MCPainter-Brücke: Fehler bei {}", ex.getRequestURI().getPath(), e);
+            throw e;
+        }
+    }
+
+    /**
+     * Liest eine Datei aus {@code web/} im Mod-Jar. Zuerst über die NeoForge-Moddatei
+     * (verlässlich auch im Modulsystem des echten Spiels), sonst über den Klassenpfad.
+     */
+    private static byte[] readWebResource(String path) throws IOException {
+        String[] parts = ("web" + path).split("/");
+        var info = ModList.get().getModFileById(MCPainter.MODID);
+        if (info != null) {
+            Path p = info.getFile().findResource(parts);
+            if (Files.isRegularFile(p)) return Files.readAllBytes(p);
+        }
+        try (InputStream in = BridgeServer.class.getResourceAsStream("/web" + path)) {
+            return in == null ? null : in.readAllBytes();
         }
     }
 

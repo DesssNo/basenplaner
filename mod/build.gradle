@@ -60,6 +60,11 @@ neoForge {
             client()
             // ./gradlew runClient -Pmcpainter.autotest oeffnet die Testseite automatisch und beendet das Spiel danach
             if (project.hasProperty("mcpainter.autotest")) systemProperty "mcpainter.autotest", "true"
+            // -Pmcpainter.size=2560x1369 startet mit dieser Fenstergroesse
+            if (project.hasProperty("mcpainter.size")) {
+                def (w, h) = project.property("mcpainter.size").toString().tokenize("x")
+                programArguments.addAll("--width", w, "--height", h)
+            }
             // Comma-separated list of namespaces to load gametests from. Empty = all namespaces.
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }

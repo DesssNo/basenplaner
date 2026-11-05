@@ -12,6 +12,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import io.github.desssno.mcpainter.MCPainter;
 import io.github.desssno.mcpainter.bridge.BridgeServer;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Screenshot;
 import org.cef.CefSettings;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
@@ -93,8 +94,14 @@ public class MCPainterScreen extends Screen {
         ticks++;
         // MCEF lädt beim ersten Start Chromium herunter; so lange warten wir.
         createBrowserIfReady();
-        if (MenuHooks.AUTOTEST && browser != null && ticks == 120) simulateInput();
-        if (MenuHooks.AUTOTEST && ticks == 1200) {
+        if (DevAutotest.ENABLED && browser != null && ticks == 120) simulateInput();
+        // Autotest: echtes Bild aus Minecraft speichern (screenshots/), um das Zeichnen der Textur zu prüfen
+        if (DevAutotest.ENABLED && browser != null && ticks == 180) {
+            MCPainter.LOGGER.info("MCPainter-Autotest: Textur-ID {}", browser.getRenderer().getTextureID());
+            Screenshot.grab(minecraft.gameDirectory, "mcpainter-autotest.png", minecraft.getMainRenderTarget(),
+                    msg -> MCPainter.LOGGER.info("MCPainter-Autotest: {}", msg.getString()));
+        }
+        if (DevAutotest.ENABLED && ticks == 1200) {
             MCPainter.LOGGER.error("MCPainter-Autotest: kein Ergebnis nach 60 s, Spiel wird beendet");
             minecraft.stop();
         }
