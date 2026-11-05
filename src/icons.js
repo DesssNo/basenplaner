@@ -10,6 +10,7 @@ export const ICONS = {
   ellipse: svg('<circle cx="12" cy="12" r="8"/>'),
   polygon: svg('<path d="M7.5 4.2h9l4.5 7.8-4.5 7.8h-9L3 12z"/>'),
   fill: svg('<path d="M4.5 11.5L12 4l7.5 7.5L12 19z"/><path d="M4.5 11.5h15"/><path d="M20 15.5c.8 1.3 1.5 2.3 1.5 3a1.5 1.5 0 0 1-3 0c0-.7.7-1.7 1.5-3z"/>'),
+  wand: svg('<path d="M4 20L14 10"/><path d="M15 3v2.5M15 12.5V15M18.5 9H21M9 9h2.5M17.5 6.5l1.8-1.8M10.7 11.3l1.8-1.8M17.5 11.5l1.8 1.8"/>'),
   select: svg('<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M11 4h2M11 20h2M4 11v2M20 11v2"/>'),
   picker: svg('<path d="M14.5 4.5l5 5-2 2-5-5z"/><path d="M13 7L5 15v4h4l8-8"/>'),
   measure: svg('<path d="M3.5 16.5L16.5 3.5l4 4-13 13z"/><path d="M7.5 12.5l2 2M10.5 9.5l2 2M13.5 6.5l2 2"/>'),

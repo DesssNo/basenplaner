@@ -72,6 +72,24 @@ export function polygonCells(a, b, filled, sides, rotated) {
   return out
 }
 
+// Is (x, z) inside the selection? Shaped selections (magic wand) carry a mask of "x,z" keys.
+export const inSel = (s, x, z) => !!s && x >= s.x1 && x <= s.x2 && z >= s.z1 && z <= s.z2 && (!s.mask || s.mask.has(x + ',' + z))
+
+// Shared by the selection tools: move the floating selection while dragging
+function dragFloating(app, c, e, drag) {
+  app.floating.x = c.x - drag.x
+  app.floating.z = c.z - drag.z
+  app.snapFloating(e?.altKey)
+  app.redraw()
+}
+
+const floatingInfo = app => {
+  const f = app.floating, s = app.selection
+  if (f) return `${f.w} × ${f.h}`
+  if (!s) return ''
+  return `${s.x2 - s.x1 + 1} × ${s.z2 - s.z1 + 1}${s.mask ? ` · ${s.mask.size.toLocaleString('de-DE')} Felder` : ''}`
+}
+
 // Constrain end point for Shift (square / circle / 45° line)
 function constrain(a, b, e, mode) {
   if (!e.shiftKey) return b
@@ -145,8 +163,7 @@ export const TOOLS = [
         this.drag = { x: c.x - f.x, z: c.z - f.z }
         return
       }
-      const s = app.selection
-      if (!f && s && c.x >= s.x1 && c.x <= s.x2 && c.z >= s.z1 && c.z <= s.z2) {
+      if (!f && inSel(app.selection, c.x, c.z)) {
         app.liftSelection(true)
         this.drag = { x: c.x - app.floating.x, z: c.z - app.floating.z }
         return
@@ -158,20 +175,46 @@ export const TOOLS = [
     },
     move(app, c, e) {
       if (this.drag && app.floating) {
-        app.floating.x = c.x - this.drag.x
-        app.floating.z = c.z - this.drag.z
-        app.snapFloating(e?.altKey)
-        app.redraw()
+        dragFloating(app, c, e, this.drag)
       } else if (this.a) {
         app.selection = { x1: Math.min(this.a.x, c.x), z1: Math.min(this.a.z, c.z), x2: Math.max(this.a.x, c.x), z2: Math.max(this.a.z, c.z) }
         app.redraw()
       }
     },
     up(app) { this.drag = null; this.a = null; app.guides = [] },
-    info(app) {
-      const s = app.floating ? { x1: app.floating.x, z1: app.floating.z, x2: app.floating.x + app.floating.w - 1, z2: app.floating.z + app.floating.h - 1 } : app.selection
-      return s ? `${s.x2 - s.x1 + 1} × ${s.z2 - s.z1 + 1}` : ''
+    info: floatingInfo,
+  },
+  {
+    // Magic wand: select the clicked block and everything connected to it (Shift = add, Alt = remove)
+    id: 'wand', name: 'Zauberstab', key: 'w',
+    down(app, c, e) {
+      const f = app.floating
+      if (f && c.x >= f.x && c.x < f.x + f.w && c.z >= f.z && c.z < f.z + f.h) {
+        this.drag = { x: c.x - f.x, z: c.z - f.z }
+        return
+      }
+      // Inside the selection: dragging moves it, a plain click selects anew
+      if (!f && !e.shiftKey && !e.altKey && inSel(app.selection, c.x, c.z)) {
+        this.pending = c
+        return
+      }
+      app.dropFloating()
+      app.wandSelect(c, e.shiftKey ? 'add' : e.altKey ? 'sub' : 'new')
     },
+    move(app, c, e) {
+      if (this.pending) {
+        app.liftSelection(true)
+        this.drag = { x: this.pending.x - app.floating.x, z: this.pending.z - app.floating.z }
+        this.pending = null
+      }
+      if (this.drag && app.floating) dragFloating(app, c, e, this.drag)
+    },
+    up(app) {
+      if (this.pending) app.wandSelect(this.pending, 'new')
+      this.pending = this.drag = null
+      app.guides = []
+    },
+    info: floatingInfo,
   },
   {
     id: 'picker', name: 'Pipette', key: 'i',

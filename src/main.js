@@ -8,7 +8,7 @@ import { Project } from './model.js'
 import { parseSeed } from './seed.js'
 import { SlimeCache } from './slime.js'
 import * as store from './store.js'
-import { TOOLS } from './tools.js'
+import { inSel, TOOLS } from './tools.js'
 import { View3D } from './view3d.js'
 
 /* global __WORKER_SOURCE__ */
@@ -30,7 +30,7 @@ class App {
     this.hotbar = ['stone_bricks', 'oak_planks', 'spruce_log', 'glass', 'smooth_stone', 'deepslate_tiles', 'lantern', 'chest', 'water'].map(id => 'minecraft:' + id)
     this.slot = 0
     this.tool = TOOLS.find(t => t.id === 'pencil')
-    this.options = { brush: 1, round: false, filled: false, sides: 6, rotated: false, symX: false, symZ: false, sym: { x: 0, z: 0 }, allLayers: false, snap: true }
+    this.options = { brush: 1, round: false, filled: false, sides: 6, rotated: false, symX: false, symZ: false, sym: { x: 0, z: 0 }, allLayers: false, snap: true, wandSame: true, wandContiguous: true }
     this.settings = { grid: true, chunks: true, biomes: true, relief: true, alpha: 0.8, slime: false, ghost: true }
     this.selection = null
     this.floating = null
@@ -309,11 +309,92 @@ class App {
 
   drawSelection(ctx) {
     if (!this.selection || this.floating) return
+    if (this.selection.mask && this.drawMaskOutline(ctx, this.selection)) return
     const [x, y, w, h] = this.rectScreen(this.selection)
     ctx.lineWidth = 1
     ctx.strokeStyle = '#000'; ctx.strokeRect(x, y, w, h)
     ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 4])
     ctx.strokeRect(x, y, w, h); ctx.setLineDash([])
+  }
+
+  // Outline of a shaped selection: every cell edge that borders an unselected cell
+  drawMaskOutline(ctx, s) {
+    if (!s.edges) {
+      s.edges = []
+      for (const key of s.mask) {
+        const [x, z] = key.split(',').map(Number)
+        if (!s.mask.has((x - 1) + ',' + z)) s.edges.push(x, z, x, z + 1)
+        if (!s.mask.has((x + 1) + ',' + z)) s.edges.push(x + 1, z, x + 1, z + 1)
+        if (!s.mask.has(x + ',' + (z - 1))) s.edges.push(x, z, x + 1, z)
+        if (!s.mask.has(x + ',' + (z + 1))) s.edges.push(x, z + 1, x + 1, z + 1)
+      }
+    }
+    if (s.edges.length > 4 * 300_000) return false // too detailed, fall back to the bounding box
+    const b = this.visibleBounds()
+    const path = new Path2D()
+    for (let i = 0; i < s.edges.length; i += 4) {
+      const x1 = s.edges[i], z1 = s.edges[i + 1], x2 = s.edges[i + 2], z2 = s.edges[i + 3]
+      if (x2 < b.x1 || x1 > b.x2 || z2 < b.z1 || z1 > b.z2) continue
+      const [sx1, sz1] = this.toScreen(x1, z1), [sx2, sz2] = this.toScreen(x2, z2)
+      path.moveTo(Math.round(sx1) + 0.5, Math.round(sz1) + 0.5)
+      path.lineTo(Math.round(sx2) + 0.5, Math.round(sz2) + 0.5)
+    }
+    ctx.lineWidth = 1
+    ctx.strokeStyle = '#000'; ctx.stroke(path)
+    ctx.strokeStyle = '#fff'; ctx.setLineDash([4, 4]); ctx.stroke(path); ctx.setLineDash([])
+    return true
+  }
+
+  // Magic wand: same block (or any block) connected to the clicked one, or everywhere on the layer
+  wandSelect(c, mode) {
+    const layer = this.project.layer(this.currentY)
+    const v = layer?.get(c.x, c.z) ?? 0
+    if (!v) {
+      if (mode === 'new') { this.selection = null; this.toast('Klicke auf einen Block, um ihn auszuwählen.', 2000) }
+      return this.redraw()
+    }
+    const { wandSame, wandContiguous } = this.options
+    const match = val => (wandSame ? val === v : val !== 0)
+    const picked = new Set()
+    if (wandContiguous) {
+      const stack = [[c.x, c.z]]
+      picked.add(c.x + ',' + c.z)
+      while (stack.length && picked.size < 2_000_000) {
+        const [x, z] = stack.pop()
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const k = (x + dx) + ',' + (z + dz)
+            if (!picked.has(k) && match(layer.get(x + dx, z + dz))) { picked.add(k); stack.push([x + dx, z + dz]) }
+          }
+        }
+      }
+    } else {
+      for (const [x, z, val] of layer.cells()) if (match(val)) picked.add(x + ',' + z)
+    }
+    // Combine with the existing selection
+    const s = this.selection
+    if (mode === 'new' || !s) {
+      if (mode === 'sub') return this.redraw()
+      return this.setMaskSelection(picked)
+    }
+    const mask = s.mask ? new Set(s.mask) : new Set()
+    if (!s.mask) for (let z = s.z1; z <= s.z2; z++) for (let x = s.x1; x <= s.x2; x++) mask.add(x + ',' + z)
+    for (const k of picked) { if (mode === 'add') mask.add(k); else mask.delete(k) }
+    this.setMaskSelection(mask)
+  }
+
+  setMaskSelection(mask) {
+    if (!mask.size) { this.selection = null; return this.redraw() }
+    let x1 = Infinity, z1 = Infinity, x2 = -Infinity, z2 = -Infinity
+    for (const k of mask) {
+      const i = k.indexOf(','), x = +k.slice(0, i), z = +k.slice(i + 1)
+      if (x < x1) x1 = x
+      if (x > x2) x2 = x
+      if (z < z1) z1 = z
+      if (z > z2) z2 = z
+    }
+    this.selection = { x1, z1, x2, z2, mask }
+    this.redraw()
   }
 
   drawPreview(ctx) {
@@ -450,13 +531,13 @@ class App {
       for (let z = s.z1; z <= s.z2; z++) {
         for (let x = s.x1; x <= s.x2; x++) {
           const v = layer.get(x, z)
-          if (!v) continue
+          if (!v || (s.mask && !s.mask.has(x + ',' + z))) continue
           cells.push([x - s.x1, z - s.z1, y, v])
           if (cut) this.project.set(y, x, z, 0)
         }
       }
     }
-    const f = { x: s.x1, z: s.z1, w: s.x2 - s.x1 + 1, h: s.z2 - s.z1 + 1, cells, baseY: this.currentY, allLayers: this.options.allLayers }
+    const f = { x: s.x1, z: s.z1, w: s.x2 - s.x1 + 1, h: s.z2 - s.z1 + 1, cells, baseY: this.currentY, allLayers: this.options.allLayers, shaped: !!s.mask }
     if (cut) { this.floating = f; this.selection = null }
     this.redraw()
     return f
@@ -512,7 +593,7 @@ class App {
         for (const [tp] of lines(t[axis + '1'], t[axis + '2'])) {
           for (const [fp] of lines(p, p + size - 1)) {
             const d = tp - fp
-            if (Number.isInteger(d) && Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best))) best = d
+            if (Number.isInteger(d) && Math.abs(d) <= tol && (best === null || Math.abs(d) < Math.abs(best))) best = d
           }
         }
       }
@@ -558,7 +639,9 @@ class App {
       const ty = y + dy
       if (ty >= MIN_Y && ty <= MAX_Y) this.project.set(ty, f.x + dx, f.z + dz, v)
     }
-    this.selection = { x1: f.x, z1: f.z, x2: f.x + f.w - 1, z2: f.z + f.h - 1 }
+    // A shaped selection stays shaped where it was dropped
+    if (f.shaped) this.setMaskSelection(new Set(f.cells.map(([dx, dz]) => (f.x + dx) + ',' + (f.z + dz))))
+    else this.selection = { x1: f.x, z1: f.z, x2: f.x + f.w - 1, z2: f.z + f.h - 1 }
     this.floating = null
     this.project.commit('Verschieben')
     this.redraw()
@@ -650,7 +733,7 @@ class App {
   setTool(id) {
     const t = TOOLS.find(t => t.id === id)
     if (!t) return
-    if (t.id !== 'select') this.dropFloating()
+    if (t.id !== 'select' && t.id !== 'wand') this.dropFloating()
     this.tool = t
     for (const b of document.querySelectorAll('#toolbar button')) b.classList.toggle('on', b.dataset.tool === id)
     this.canvas.style.cursor = t.pan ? 'grab' : t.id === 'picker' ? 'copy' : 'crosshair'
@@ -683,7 +766,12 @@ class App {
     if (t === 'rect' || t === 'ellipse') parts.push(`<label><input type="checkbox" data-opt="filled" ${o.filled ? 'checked' : ''}> Gefüllt</label><span class="label">Shift = ${t === 'rect' ? 'Quadrat' : 'Kreis'}</span>`)
     if (t === 'line') parts.push('<span class="label">Shift = gerade / 45°</span>')
     if (t === 'fill') parts.push('<span class="label">Füllt die zusammenhängende Fläche gleicher Blöcke auf dieser Ebene</span>')
-    if (t === 'select') {
+    if (t === 'wand') {
+      parts.push(`<label title="Nur Blöcke derselben Sorte wählen; aus = ganzer zusammenhängender Bau"><input type="checkbox" data-opt="wandSame" ${o.wandSame ? 'checked' : ''}> Gleicher Block</label>
+        <label title="Nur zusammenhängende Blöcke; aus = alle passenden auf der Ebene"><input type="checkbox" data-opt="wandContiguous" ${o.wandContiguous ? 'checked' : ''}> Zusammenhängend</label>
+        <span class="label">Shift = hinzufügen, Alt = abziehen</span><span class="sep"></span>`)
+    }
+    if (t === 'select' || t === 'wand') {
       parts.push(`<label><input type="checkbox" data-opt="allLayers" ${o.allLayers ? 'checked' : ''}> Alle Ebenen</label>
         <label title="Beim Verschieben an Kanten und Mitten anderer Bauten einrasten (Alt halten = frei)"><input type="checkbox" data-opt="snap" ${o.snap ? 'checked' : ''}> Hilfslinien</label>
         <button data-cmd="copy" title="Strg+C">Kopieren</button><button data-cmd="cut" title="Strg+X">Ausschneiden</button>
@@ -1070,7 +1158,6 @@ class App {
     })
     if (!map.size) return 0
     const s = this.selection
-    const inSel = (x, z) => x >= s.x1 && x <= s.x2 && z >= s.z1 && z <= s.z2
     const ys = scope === 'layer' || (scope === 'sel' && !this.options.allLayers) ? [this.currentY] : [...p.layers.keys()]
     let n = 0
     p.begin()
@@ -1078,7 +1165,7 @@ class App {
       const layer = p.layer(y)
       if (!layer) continue
       for (const [x, z, v] of [...layer.cells()]) {
-        if (!map.has(v) || (scope === 'sel' && !inSel(x, z))) continue
+        if (!map.has(v) || (scope === 'sel' && !inSel(s, x, z))) continue
         p.set(y, x, z, map.get(v))
         n++
       }
@@ -1275,7 +1362,7 @@ class App {
       }
       if (e.button !== 0 && e.button !== 2) return
       this.hover = cell // so the first move away from here counts
-      if (this.tool.id !== 'select') this.dropFloating()
+      if (this.tool.id !== 'select' && this.tool.id !== 'wand') this.dropFloating()
       this.active = this.tool
       this.lastCell = cell
       this.tool.down?.(this, cell, e)

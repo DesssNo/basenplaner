@@ -12,7 +12,7 @@ Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Sc
 
 ## Funktionen
 - **Seed-Karte:** exakte Oberwelt-Biome für Java 26.3, dazu eine Höhenschätzung als Relief und Slime-Chunks
-- **Werkzeuge:** Stift, Radierer, Linie, Rechteck, Kreis/Ellipse, Vieleck (5–8 Ecken), Füllen, Auswahl (verschieben mit pinken Hilfslinien zum Ausrichten, kopieren, drehen, spiegeln), Pipette, Messen, Zonen
+- **Werkzeuge:** Stift, Radierer, Linie, Rechteck, Kreis/Ellipse, Vieleck (5–8 Ecken), Füllen, Auswahl und Zauberstab (verschieben mit pinken Hilfslinien zum Ausrichten, kopieren, drehen, spiegeln), Pipette, Messen, Zonen
 - **Ebenen** pro Y-Höhe, darunterliegende Ebenen scheinen durch; „Hochziehen“ kopiert eine Ebene mehrfach nach oben (für Wände)
 - **Symmetrie** in X/Z, Pinselgröße 1–15, Rückgängig/Wiederholen
 - **Materialliste** mit Stacks und Shulkerkisten
@@ -27,6 +27,7 @@ Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Sc
 | B / E / L / R / O / G | Stift / Radierer / Linie / Rechteck / Kreis / Füllen |
 | N | Vieleck (5-, 6-, 7- oder 8-Eck) |
 | M / I / U / T / H | Auswahl / Pipette / Messen / Zone / Hand |
+| W | Zauberstab: Klick wählt zusammenhängende gleiche Blöcke (Shift = hinzufügen, Alt = abziehen) |
 | P | Teleport-Befehl: Klick auf einen Block kopiert `/tp @s X Y Z` (auch Nether-Variante) |
 | 1–9 | Hotbar-Slot |
 | Bild auf / Bild ab | Ebene höher / tiefer |
