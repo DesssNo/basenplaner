@@ -59,7 +59,7 @@ Der Mod liegt in [`mod/`](mod) (NeoForge 1.21.1). Stand: Etappe 1, Pläne aus de
 3. Beim ersten Start lädt MCEF Chromium herunter (ca. 100 MB).
 4. In einer Welt: Esc → Button „MCPainter“ oben links. Eine Taste ist standardmäßig nicht belegt, man kann sie unter Optionen → Steuerung festlegen.
 
-**Aus dem Browser bauen:** Im Spiel `/mcpainter code` eingeben und den Code anklicken (kopiert ihn). Im Basenplaner auf „Als Schematic exportieren“ → „Mit Minecraft koppeln…“ klicken und den Code einfügen. Danach erscheint oben der Button „In Minecraft bauen“. Rückgängig geht im Bau-Dialog oder im Spiel mit `/mcpainter undo`; die letzten 5 Bauten lassen sich auch nach einem Neustart noch zurücknehmen.
+**Aus dem Browser bauen:** Im Spiel `/mcpainter code` eingeben und den Code anklicken (kopiert ihn). Im Basenplaner oben auf „Minecraft koppeln“ klicken und den Code einfügen. Danach erscheint oben der Button „In Minecraft bauen“. Rückgängig geht im Bau-Dialog oder im Spiel mit `/mcpainter undo`; die letzten 5 Bauten lassen sich auch nach einem Neustart noch zurücknehmen.
 
 **Tests des Mods:** `cd mod` → `gradlew test` (Schematic lesen, Bau-Reihenfolge). Gegen das laufende Spiel: `gradlew runClient -Pmcpainter.autotest=bridge` starten, dann im Hauptordner `node tools/test-bridge.mjs` (bauen, Optionen, Abbrechen, Rückgängig, Token, CORS).
 

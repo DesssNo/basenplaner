@@ -6,7 +6,7 @@
   "mcpainter.screen.loading": "Chromium wird geladen … (beim ersten Start ca. 100 MB)",
   "mcpainter.code": "MCPainter-Kopplungscode: %s",
   "mcpainter.code.copy": "Klicken zum Kopieren",
-  "mcpainter.code.hint": "Im Basenplaner im Browser: Exportieren → „Mit Minecraft koppeln“ und den Code einfügen. Gilt bis zum Neustart des Spiels.",
+  "mcpainter.code.hint": "Im Basenplaner im Browser oben auf „Minecraft koppeln“ klicken und den Code einfügen. Gilt bis zum Neustart des Spiels.",
   "mcpainter.undo.singleplayer": "MCPainter: Rückgängig geht nur in einer Einzelspielerwelt.",
   "mcpainter.undo.denied": "MCPainter: Rückgängig dürfen nur der Welt-Besitzer oder OPs.",
   "mcpainter.undo.none": "MCPainter: Es gibt keinen Bau, der sich rückgängig machen lässt.",

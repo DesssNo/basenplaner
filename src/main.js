@@ -77,6 +77,7 @@ class App {
   // ---------- Minecraft (MCPainter-Mod) ----------
   onBridge(hello) {
     $('#mc-build').hidden = !hello
+    $('#mc-pair').hidden = !!hello || this.bridge.inGame
     if (hello && !this.bridge.inGame) this.toast(`Mit Minecraft verbunden${hello.world ? ` (Welt „${hello.world}“)` : ''}.`, 4000)
   }
 
@@ -1162,6 +1163,7 @@ class App {
       case 'png': this.canvas.toBlob(b => download(b, `${this.fileName()}.png`, 'image/png')); break
       case 'export': this.showExport(); break
       case 'mc-build': this.showBuild(); break
+      case 'mc-pair': this.pairMinecraft(); break
       case 'layer-up': this.setY(this.currentY + 1); break
       case 'layer-down': this.setY(this.currentY - 1); break
       case 'layer-copy-up':
@@ -1317,10 +1319,8 @@ class App {
       </select></label>
       <label class="field"><span>Name</span><input name="name" value="${esc(this.fileName())}"></label>
       <p class="hint"><b>Litematica:</b> Datei in <code>.minecraft/schematics</code> legen, im Spiel laden und an X ${b.x1} Y ${b.y1} Z ${b.z1} platzieren.<br>
-      <b>WorldEdit:</b> nach <code>plugins/WorldEdit/schematics</code> (oder <code>config/worldedit/schematics</code>), dann <code>//schem load NAME</code> und <code>//paste -o</code> setzt sie an die Originalkoordinaten.</p>
-      <p class="hint"><b>MCPainter-Mod:</b> Mit „Mit Minecraft koppeln“ baust du den Plan direkt in deiner Welt, ganz ohne Datei.</p>`,
-    [['pair', 'Mit Minecraft koppeln…'], ['cancel', 'Abbrechen'], ['ok', 'Exportieren', true]])
-    if (r === 'pair') return this.pairMinecraft()
+      <b>WorldEdit:</b> nach <code>plugins/WorldEdit/schematics</code> (oder <code>config/worldedit/schematics</code>), dann <code>//schem load NAME</code> und <code>//paste -o</code> setzt sie an die Originalkoordinaten.</p>`,
+    [['cancel', 'Abbrechen'], ['ok', 'Exportieren', true]])
     if (r !== 'ok') return
     const form = $('#dialog form')
     const name = (form.elements.name.value || 'basenplan').replace(/[^\w\-]+/g, '_')
