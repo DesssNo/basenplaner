@@ -2,7 +2,11 @@
 
 Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Schematic-Export.
 
-**Benutzen:** `dist/Basenplaner.html` per Doppelklick im Browser öffnen (Chrome, Edge oder Firefox). Die Datei funktioniert offline und braucht keinen Server.
+**Online benutzen:** https://desssno.github.io/basenplaner/
+
+**Offline:** `dist/Basenplaner.html` per Doppelklick im Browser öffnen (Chrome, Edge oder Firefox).
+
+**Updates:** Nach Änderungen `npm run build` ausführen, dann committen und pushen. Die Seite aktualisiert sich nach ungefähr einer Minute automatisch (`.github/workflows/pages.yml`).
 
 ## Funktionen
 - **Seed-Karte:** exakte Oberwelt-Biome für Java 26.3, dazu eine Höhenschätzung als Relief und Slime-Chunks
