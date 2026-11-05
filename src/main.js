@@ -1244,7 +1244,6 @@ class App {
         else if (k === 'x') { e.preventDefault(); this.copy(true) }
         else if (k === 'v') { e.preventDefault(); this.paste() }
         else if (k === 's') { e.preventDefault(); this.action('save') }
-        else if (k === 'h') { e.preventDefault(); this.action('replace') }
         else if (k === 'a') { e.preventDefault(); const b = this.project.layer(this.currentY)?.bounds(); if (b) { this.setTool('select'); this.selection = b; this.redraw() } }
         return
       }
@@ -1262,6 +1261,8 @@ class App {
       if (k === 'z') { this.options.symZ = !this.options.symZ; this.buildOptions(); this.redraw(); return }
       if (k === 's' && this.hover) { this.options.sym = { ...this.hover }; this.buildOptions(); this.redraw(); return }
       if (k === 'q') { this.transformFloating('rotate'); return }
+      // Shift+R: Ctrl+H would open the browser history
+      if (k === 'r' && e.shiftKey) { this.action('replace'); return }
       const tool = TOOLS.find(t => t.key === k)
       if (tool) this.setTool(tool.id)
     })
