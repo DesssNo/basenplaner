@@ -41,7 +41,7 @@ cd basenplaner
 git config user.name "DesssNo"
 git config user.email "169904836+DesssNo@users.noreply.github.com"
 npm install
-npm test        # muss 25× OK zeigen
+npm test        # muss 48× OK zeigen
 npm run build   # erzeugt dist/Basenplaner.html
 ```
 

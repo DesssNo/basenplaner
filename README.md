@@ -53,11 +53,15 @@ npm run build
 - `tools/test-import.mjs`: Import-Tests (Round-Trip, Sponge v3, Strukturdateien, Litematic mit mehreren Regionen).
 
 ## Mod installieren (MCPainter, in Arbeit)
-Der Mod liegt in [`mod/`](mod) (NeoForge 1.21.1). Stand: Etappe 0, ein Testbildschirm, noch ohne Editor.
-1. Die Jar bauen (`cd mod`, dann `gradlew build` → `mod/build/libs/mcpainter-*.jar`) oder als Artefakt aus dem Workflow „Mod bauen“ laden.
+Der Mod liegt in [`mod/`](mod) (NeoForge 1.21.1). Stand: Etappe 1, Pläne aus dem Browser in der Welt bauen. Der Editor im Spiel folgt in Etappe 2.
+1. Die Jar bauen (`npm run build`, dann `cd mod` und `gradlew build` → `mod/build/libs/mcpainter-*.jar`) oder als Artefakt aus dem Workflow „Mod bauen“ laden.
 2. Die Jar und [MCEF](https://www.curseforge.com/minecraft/mc-mods/mcef/files) `2.1.6-1.21.1` für NeoForge in den `mods/`-Ordner der Instanz legen.
 3. Beim ersten Start lädt MCEF Chromium herunter (ca. 100 MB).
 4. In einer Welt: Esc → Button „MCPainter“ oben links. Eine Taste ist standardmäßig nicht belegt, man kann sie unter Optionen → Steuerung festlegen.
+
+**Aus dem Browser bauen:** Im Spiel `/mcpainter code` eingeben und den Code anklicken (kopiert ihn). Im Basenplaner auf „Als Schematic exportieren“ → „Mit Minecraft koppeln…“ klicken und den Code einfügen. Danach erscheint oben der Button „In Minecraft bauen“. Rückgängig geht im Bau-Dialog oder im Spiel mit `/mcpainter undo`; die letzten 5 Bauten lassen sich auch nach einem Neustart noch zurücknehmen.
+
+**Tests des Mods:** `cd mod` → `gradlew test` (Schematic lesen, Bau-Reihenfolge). Gegen das laufende Spiel: `gradlew runClient -Pmcpainter.autotest=bridge` starten, dann im Hauptordner `node tools/test-bridge.mjs` (bauen, Optionen, Abbrechen, Rückgängig, Token, CORS).
 
 ## Geplant
 - [MCPainter: der Basenplaner direkt in Minecraft](docs/MCPainter-Konzept.md): NeoForge-1.21.1-Mod mit Editor im Spiel, Bauen direkt in der Welt, Biomen und Blöcken aus dem Modpack. Noch nicht gebaut; Umsetzungsplan in [`AUFTRAG-MCPAINTER.md`](AUFTRAG-MCPAINTER.md).

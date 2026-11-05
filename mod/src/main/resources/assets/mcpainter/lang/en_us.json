@@ -3,5 +3,13 @@
   "key.mcpainter.open": "Open MCPainter",
   "mcpainter.button.open": "MCPainter",
   "mcpainter.screen.title": "MCPainter",
-  "mcpainter.screen.loading": "Loading Chromium … (about 100 MB on first start)"
+  "mcpainter.screen.loading": "Loading Chromium … (about 100 MB on first start)",
+  "mcpainter.code": "MCPainter pairing code: %s",
+  "mcpainter.code.copy": "Click to copy",
+  "mcpainter.code.hint": "In the Basenplaner in your browser: Export → “Mit Minecraft koppeln” and paste the code. Valid until the game restarts.",
+  "mcpainter.undo.singleplayer": "MCPainter: Undo only works in a singleplayer world.",
+  "mcpainter.undo.denied": "MCPainter: Only the world owner or operators may undo.",
+  "mcpainter.undo.none": "MCPainter: There is no build to undo.",
+  "mcpainter.undo.started": "MCPainter: Undoing the last build (%s blocks).",
+  "mcpainter.undo.failed": "MCPainter: Undo failed: %s"
 }

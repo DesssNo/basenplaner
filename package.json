@@ -2,7 +2,7 @@
   "name": "basenplaner",
   "version": "1.0.0",
   "scripts": {
-    "test": "node tools/test-export.mjs && node tools/test-import.mjs",
+    "test": "node tools/test-export.mjs && node tools/test-import.mjs && node tools/test-blockstate.mjs",
     "build": "node tools/build.mjs"
   },
   "description": "Minecraft Basenplaner mit Seed-Karte, 3D-Ansicht und Schematic-Import/-Export",

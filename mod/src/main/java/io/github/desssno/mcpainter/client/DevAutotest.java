@@ -2,6 +2,7 @@ package io.github.desssno.mcpainter.client;
 
 import com.cinemamod.mcef.MCEF;
 import io.github.desssno.mcpainter.MCPainter;
+import io.github.desssno.mcpainter.bridge.Api;
 import io.github.desssno.mcpainter.bridge.BridgeServer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -14,13 +15,20 @@ import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+
 /**
  * Nur für die Entwicklung ({@code gradlew runClient -Pmcpainter.autotest}): Lädt bzw. erstellt die Welt
  * „mcpainter-test“, öffnet dort das Pausemenü und dann MCPainter, wie ein Spieler es tut.
  * Die Testseite meldet ihr Ergebnis über die Brücke, danach beendet sich das Spiel.
  */
 final class DevAutotest {
-    static final boolean ENABLED = Boolean.getBoolean("mcpainter.autotest");
+    private static final String MODE = System.getProperty("mcpainter.autotest");
+    static final boolean ENABLED = MODE != null;
+    /** Nur Welt laden und die API offen lassen (für Tests per curl). */
+    private static final boolean BRIDGE_ONLY = "bridge".equals(MODE);
     private static final String WORLD = "mcpainter-test";
 
     private static int stage;
@@ -54,6 +62,18 @@ final class DevAutotest {
                 // warten, bis der Spieler in der Welt steht
                 if (mc.player == null || mc.level == null || mc.screen != null) return;
                 if (++wait < 60) return;
+                if (BRIDGE_ONLY) {
+                    stage = 3;
+                    BridgeServer bridge = BridgeServer.get();
+                    Api.setDevQuit(() -> mc.execute(mc::stop));
+                    try {
+                        Files.writeString(mc.gameDirectory.toPath().resolve("mcpainter-dev.txt"), bridge.port() + " " + bridge.token());
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                    MCPainter.LOGGER.info("MCPainter-Autotest: Brücke bereit, Zugang in run/mcpainter-dev.txt");
+                    return;
+                }
                 stage = 2;
                 MCPainter.LOGGER.info("MCPainter-Autotest: in der Welt, öffne Pausemenü");
                 mc.setScreen(new PauseScreen(true));

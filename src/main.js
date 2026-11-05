@@ -1,5 +1,7 @@
 import { BIOMES } from './biomes.js'
 import { BLOCK_GROUPS, baseId, blockInfo, normalizeBlockId } from './blocks.js'
+import { transformState } from './blockstate.js'
+import { Bridge } from './bridge.js'
 import { download, exportLitematic, exportSponge } from './export.js'
 import { readSchematic } from './import.js'
 import { ICONS } from './icons.js'
@@ -42,6 +44,7 @@ class App {
     this.map = new BiomeMap(__WORKER_SOURCE__, () => this.redraw())
     this.seedValue = null
     this.view3d = new View3D(this)
+    this.bridge = new Bridge()
   }
 
   get block() { return this.hotbar[this.slot] }
@@ -68,6 +71,104 @@ class App {
     this.syncSettingsUI()
     this.refreshAll()
     if (!this.project.seed) this.toast('Tipp: Gib rechts deinen Seed ein, um die echte Weltkarte als Untergrund zu laden.', 6000)
+    this.bridge.connect().then(h => this.onBridge(h))
+  }
+
+  // ---------- Minecraft (MCPainter-Mod) ----------
+  onBridge(hello) {
+    $('#mc-build').hidden = !hello
+    if (hello && !this.bridge.inGame) this.toast(`Mit Minecraft verbunden${hello.world ? ` (Welt „${hello.world}“)` : ''}.`, 4000)
+  }
+
+  async pairMinecraft() {
+    const code = await this.ask('Mit Minecraft koppeln', 'Im Spiel /mcpainter code eingeben und den Code hier einfügen')
+    if (!code) return
+    try {
+      this.onBridge(await this.bridge.pair(code))
+    } catch (e) {
+      this.toast(e.message, 6000)
+    }
+  }
+
+  async showBuild() {
+    this.dropFloating()
+    const b = this.project.bounds()
+    if (!b) return this.toast('Der Plan ist leer – setze erst ein paar Blöcke.')
+    let hello
+    try {
+      hello = await this.bridge.get('/api/hello')
+    } catch (e) {
+      this.onBridge(null)
+      return this.toast(e.message, 6000)
+    }
+    if (!hello.inWorld) return this.toast('In Minecraft ist gerade keine Welt geöffnet.', 5000)
+    if (!hello.canBuild) return this.toast('Bauen dürfen nur der Welt-Besitzer oder OPs.', 5000)
+    const size = [b.x2 - b.x1 + 1, b.y2 - b.y1 + 1, b.z2 - b.z1 + 1]
+    const count = this.project.materials().reduce((n, [, c]) => n + c, 0)
+    const hidden = [...this.project.layers.values()].filter(l => !l.visible && l.count).length
+    const r = await this.dialog('In Minecraft bauen', `
+      <p class="hint">${count.toLocaleString('de-DE')} Blöcke · Größe ${size.join(' × ')} · Ecke bei X ${b.x1}, Y ${b.y1}, Z ${b.z1}<br>
+      Welt „${esc(hello.world)}“, ${esc(hello.dimension ?? '')}${hidden ? ` · ${hidden} ausgeblendete Ebene(n) werden nicht gebaut` : ''}</p>
+      <label class="field"><span>Bestehende Blöcke in der Welt</span><select name="overwrite">
+        <option value="all">überschreiben</option>
+        <option value="air_fluids">nur Luft und Wasser/Lava ersetzen</option>
+        <option value="none">nicht anfassen (nur in Luft bauen)</option>
+      </select></label>
+      <label class="check"><input type="checkbox" name="clearAir"> Luft im Plan räumt frei (leere Stellen im Bauraum werden zu Luft)</label>
+      <p class="hint">Rückgängig geht nach dem Bau hier im Dialog oder im Spiel mit <code>/mcpainter undo</code>.</p>`,
+    [['cancel', 'Abbrechen'], ['ok', 'Bauen', true]])
+    if (r !== 'ok') return
+    const form = $('#dialog form')
+    const query = `overwrite=${form.overwrite.value}&clearAir=${form.clearAir.checked}`
+    try {
+      // Der Schematic-Exporter dient als Transportformat; 1.21.1 = DataVersion 3955
+      const { bytes } = exportSponge(this.project, { dataVersion: 3955, name: this.fileName() })
+      this.showJob(await this.bridge.post('/api/build?' + query, bytes))
+    } catch (e) {
+      this.toast(e.message, 6000)
+    }
+  }
+
+  // Fortschritt eines Bau- oder Rückgängig-Auftrags
+  async showJob(job) {
+    const dlg = $('#dialog')
+    const undo = job.kind === 'undo'
+    const finished = j => ['done', 'cancelled', 'failed'].includes(j.state)
+    const label = { queued: 'Wartet', running: undo ? 'Wird zurückgesetzt' : 'Wird gebaut', shaping: 'Verbindet Zäune und Scheiben', done: 'Fertig', cancelled: 'Abgebrochen', failed: 'Fehler' }
+    const render = j => {
+      const pct = j.total ? Math.round(100 * j.done / j.total) : 100
+      dlg.querySelector('.body').innerHTML = `
+        <div class="progress"><div style="width:${pct}%"></div></div>
+        <p>${label[j.state] ?? j.state}: ${j.done.toLocaleString('de-DE')} von ${j.total.toLocaleString('de-DE')} Blöcken (${pct} %)
+        ${j.placed !== undefined ? `<br><span class="hint">gesetzt ${j.placed.toLocaleString('de-DE')}, übersprungen ${j.skipped.toLocaleString('de-DE')}</span>` : ''}</p>
+        ${j.unknownBlocks?.length ? `<p class="hint">In dieser Minecraft-Version unbekannt, übersprungen: ${j.unknownBlocks.map(id => `<code>${esc(id)}</code>`).join(' ')}</p>` : ''}
+        ${j.error ? `<p class="hint">${esc(j.error)}</p>` : ''}`
+      if (finished(j)) {
+        dlg.querySelector('.buttons').innerHTML = (!undo && j.state !== 'failed' ? '<button type="button" value="undo">Rückgängig</button>' : '') +
+          '<button type="button" value="close" class="primary">Schließen</button>'
+      }
+    }
+    const closed = this.dialog(undo ? 'Rückgängig' : 'Bau in Minecraft', '', [['stop', 'Abbrechen'], ['close', 'Im Hintergrund weiter', true]])
+    let current = job
+    render(current)
+    const timer = setInterval(async () => {
+      try {
+        current = await this.bridge.get('/api/build/' + job.jobId)
+        render(current)
+        if (finished(current)) clearInterval(timer)
+      } catch (e) {
+        clearInterval(timer)
+        dlg.querySelector('.body').insertAdjacentHTML('beforeend', `<p class="hint">${esc(e.message)}</p>`)
+      }
+    }, 400)
+    const r = await closed
+    clearInterval(timer)
+    try {
+      if (r === 'stop' && !finished(current)) await this.bridge.post(`/api/build/${job.jobId}/cancel`)
+      if (r === 'undo') this.showJob(await this.bridge.post('/api/undo'))
+    } catch (e) {
+      this.toast(e.message, 6000)
+    }
   }
 
   setProject(p) {
@@ -694,11 +795,17 @@ class App {
       this.liftSelection(true)
     }
     const f = this.floating
+    // Treppen, Stämme, Schilder usw. drehen bzw. spiegeln sich mit
+    const states = new Map()
+    const st = v => {
+      if (!states.has(v)) states.set(v, this.project.blockIndex(transformState(this.project.palette[v], kind)))
+      return states.get(v)
+    }
     if (kind === 'rotate') {
-      f.cells = f.cells.map(([dx, dz, y, v]) => [f.h - 1 - dz, dx, y, v]);
+      f.cells = f.cells.map(([dx, dz, y, v]) => [f.h - 1 - dz, dx, y, st(v)]);
       [f.w, f.h] = [f.h, f.w]
-    } else if (kind === 'flipX') f.cells = f.cells.map(([dx, dz, y, v]) => [f.w - 1 - dx, dz, y, v])
-    else f.cells = f.cells.map(([dx, dz, y, v]) => [dx, f.h - 1 - dz, y, v])
+    } else if (kind === 'flipX') f.cells = f.cells.map(([dx, dz, y, v]) => [f.w - 1 - dx, dz, y, st(v)])
+    else f.cells = f.cells.map(([dx, dz, y, v]) => [dx, f.h - 1 - dz, y, st(v)])
     this.redraw()
   }
 
@@ -1054,6 +1161,7 @@ class App {
       case 'replace': this.showReplace(); break
       case 'png': this.canvas.toBlob(b => download(b, `${this.fileName()}.png`, 'image/png')); break
       case 'export': this.showExport(); break
+      case 'mc-build': this.showBuild(); break
       case 'layer-up': this.setY(this.currentY + 1); break
       case 'layer-down': this.setY(this.currentY - 1); break
       case 'layer-copy-up':
@@ -1209,8 +1317,10 @@ class App {
       </select></label>
       <label class="field"><span>Name</span><input name="name" value="${esc(this.fileName())}"></label>
       <p class="hint"><b>Litematica:</b> Datei in <code>.minecraft/schematics</code> legen, im Spiel laden und an X ${b.x1} Y ${b.y1} Z ${b.z1} platzieren.<br>
-      <b>WorldEdit:</b> nach <code>plugins/WorldEdit/schematics</code> (oder <code>config/worldedit/schematics</code>), dann <code>//schem load NAME</code> und <code>//paste -o</code> setzt sie an die Originalkoordinaten.</p>`,
-    [['cancel', 'Abbrechen'], ['ok', 'Exportieren', true]])
+      <b>WorldEdit:</b> nach <code>plugins/WorldEdit/schematics</code> (oder <code>config/worldedit/schematics</code>), dann <code>//schem load NAME</code> und <code>//paste -o</code> setzt sie an die Originalkoordinaten.</p>
+      <p class="hint"><b>MCPainter-Mod:</b> Mit „Mit Minecraft koppeln“ baust du den Plan direkt in deiner Welt, ganz ohne Datei.</p>`,
+    [['pair', 'Mit Minecraft koppeln…'], ['cancel', 'Abbrechen'], ['ok', 'Exportieren', true]])
+    if (r === 'pair') return this.pairMinecraft()
     if (r !== 'ok') return
     const form = $('#dialog form')
     const name = (form.elements.name.value || 'basenplan').replace(/[^\w\-]+/g, '_')

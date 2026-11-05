@@ -58,8 +58,11 @@ neoForge {
     runs {
         client {
             client()
-            // ./gradlew runClient -Pmcpainter.autotest oeffnet die Testseite automatisch und beendet das Spiel danach
-            if (project.hasProperty("mcpainter.autotest")) systemProperty "mcpainter.autotest", "true"
+            // ./gradlew runClient -Pmcpainter.autotest oeffnet die Testseite automatisch und beendet das Spiel danach,
+            // -Pmcpainter.autotest=bridge laedt nur die Testwelt und schreibt Port und Token nach run/mcpainter-dev.txt
+            if (project.hasProperty("mcpainter.autotest")) {
+                systemProperty "mcpainter.autotest", project.property("mcpainter.autotest").toString() ?: "page"
+            }
             // -Pmcpainter.size=2560x1369 startet mit dieser Fenstergroesse
             if (project.hasProperty("mcpainter.size")) {
                 def (w, h) = project.property("mcpainter.size").toString().tokenize("x")
@@ -116,6 +119,14 @@ neoForge {
             sourceSet(sourceSets.main)
         }
     }
+
+    // Unit-Tests brauchen Minecraft-Klassen (z. B. NbtIo), aber kein laufendes Spiel
+    addModdingDependenciesTo(sourceSets.test)
+}
+
+tasks.named("test", Test) {
+    useJUnitPlatform()
+    testLogging { events "passed", "failed"; exceptionFormat "full" }
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -131,6 +142,10 @@ dependencies {
     // mcef-neoforge enthaelt API, java-cef und den NeoForge-Einstieg.
     compileOnly "com.cinemamod:mcef-neoforge:${mcef_version}"
     localRuntime "com.cinemamod:mcef-neoforge:${mcef_version}"
+
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 // This block of code expands all declared replace properties in the specified resource targets.
@@ -155,6 +170,15 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
 // Include the output of "generateModMetadata" as an input directory for the build
 // this works with both building through Gradle and the IDE.
 sourceSets.main.resources.srcDir generateModMetadata
+
+// Der Editor: dieselbe Datei wie auf GitHub Pages, die Brücke liefert sie unter "/" aus.
+// Vorher im Hauptordner "npm run build" ausführen (dist/ ist eingecheckt).
+tasks.named("processResources", ProcessResources) {
+    from(rootProject.file("../dist/Basenplaner.html")) {
+        into "web"
+        rename { "index.html" }
+    }
+}
 // To avoid having to run "generateModMetadata" manually, make it run on every project reload
 neoForge.ideSyncTask generateModMetadata
 
