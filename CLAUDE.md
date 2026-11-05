@@ -7,7 +7,7 @@ Minecraft-Basenplaner als Web-App (Deutsch), live auf https://desssno.github.io/
 ## Befehle
 - `npm install`: Abhängigkeiten installieren (deepslate, three, esbuild)
 - `npm test`: Export-, Import- und Blockzustand-Tests (60 Prüfungen)
-- Mod (`mod/`): `gradlew build` (mit Unit-Tests), `gradlew runClient -Pmcpainter.autotest` (Testseite im Spiel), `-Pmcpainter.autotest=bridge` + `node tools/test-bridge.mjs` (Bauen über die Brücke)
+- Mod (`mod/`): `gradlew build` (mit Unit-Tests), `gradlew runClient -Pmcpainter.autotest` (Testseite im Spiel), `-Pmcpainter.autotest=editor` (Editor im Spiel, Esc), `-Pmcpainter.autotest=bridge` + `node tools/test-bridge.mjs` (Bauen über die Brücke)
 - `npm run build`: baut `dist/Basenplaner.html` (eine Datei, alles inline). Nach jeder Änderung an `src/` ausführen und mitcommitten.
 
 ## Regeln

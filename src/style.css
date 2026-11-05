@@ -137,3 +137,6 @@ dialog code { background: #14161a; padding: 1px 5px; border-radius: 4px; }
 .progress { height: 12px; background: #14161a; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin: 10px 0 6px; }
 .progress > div { height: 100%; background: var(--accent); transition: width .3s; }
 dialog label.check { display: flex; gap: 6px; align-items: center; margin: 8px 0; }
+
+/* Minecraft-Modus (Editor im Spiel): Export, PNG, Seed und Koppeln gibt es dort nicht */
+body.mc [data-action=export], body.mc [data-action=png], body.mc #mc-pair, body.mc #seed-box { display: none !important; }

@@ -109,4 +109,12 @@ check(diff === 0, `nach allen Rückgängig ist der Bereich wie vorher (${diff} A
 const none = await fetch(base + '/api/undo', { method: 'POST', headers: { 'X-MCPainter-Token': token } })
 check(none.status === 404, `nichts mehr rückgängig zu machen: ${none.status}`)
 
+// --- Plan pro Welt (Editor im Spiel speichert im Weltordner) ---
+const planData = { project: { format: 'basenplaner', version: 1, name: 'Testplan äöü', palette: [], layers: [] }, currentY: 70 }
+await api('POST', '/api/plan', JSON.stringify(planData))
+const loaded = await api('GET', '/api/plan')
+check(loaded.project?.name === 'Testplan äöü' && loaded.currentY === 70, `Plan gespeichert und geladen: „${loaded.project?.name}“`)
+const bad = await fetch(base + '/api/plan', { method: 'POST', body: 'kein json', headers: { 'X-MCPainter-Token': token } })
+check(bad.status === 400, `ungültiger Plan abgelehnt: ${bad.status}`)
+
 await api('POST', '/api/dev/quit').catch(() => {})

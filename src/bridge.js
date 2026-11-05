@@ -13,6 +13,11 @@ export class Bridge {
 
   get connected() { return !!this.hello }
 
+  // Läuft die Seite im Spiel? Dann hat die Brücke sie mit Token in der URL ausgeliefert.
+  static inGame() {
+    return location.hostname === '127.0.0.1' && new URLSearchParams(location.search).has('token')
+  }
+
   // Prüft, ob eine Brücke erreichbar ist; gibt /api/hello zurück oder null
   async connect() {
     const token = new URLSearchParams(location.search).get('token')

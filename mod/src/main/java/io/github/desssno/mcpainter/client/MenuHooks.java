@@ -1,6 +1,8 @@
 package io.github.desssno.mcpainter.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import io.github.desssno.mcpainter.MCPainter;
+import io.github.desssno.mcpainter.bridge.Api;
 import io.github.desssno.mcpainter.bridge.BridgeServer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -30,11 +32,23 @@ public final class MenuHooks {
         modBus.addListener(RegisterKeyMappingsEvent.class, e -> e.register(OPEN_KEY));
         NeoForge.EVENT_BUS.addListener(ClientTickEvent.Post.class, e -> onTick());
         NeoForge.EVENT_BUS.addListener(ScreenEvent.Init.Post.class, MenuHooks::onScreenInit);
+        // Die Seite meldet sich bereit bzw. bittet ums Schließen (Esc ohne offenen Dialog)
+        Minecraft mc = Minecraft.getInstance();
+        Api.setUiHooks(
+                () -> mc.execute(() -> { if (mc.screen instanceof MCPainterScreen s) s.markReady(); }),
+                () -> mc.execute(() -> {
+                    MCPainter.LOGGER.info("MCPainter: Editor bittet ums Schließen");
+                    if (mc.screen instanceof MCPainterScreen s) s.onClose();
+                }));
     }
 
+    /** Öffnet den Editor (dieselbe Seite wie auf GitHub Pages, ausgeliefert von der Brücke). */
     public static void open() {
-        // Etappe 0: Testseite. Ab Etappe 2 öffnet sich hier der Editor.
-        Minecraft.getInstance().setScreen(new MCPainterScreen(BridgeServer.get().url("/test/")));
+        open("/");
+    }
+
+    static void open(String path) {
+        Minecraft.getInstance().setScreen(new MCPainterScreen(BridgeServer.get().url(path)));
     }
 
     private static void onTick() {

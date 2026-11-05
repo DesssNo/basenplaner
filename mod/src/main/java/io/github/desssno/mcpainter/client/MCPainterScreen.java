@@ -12,26 +12,34 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import io.github.desssno.mcpainter.MCPainter;
 import io.github.desssno.mcpainter.bridge.BridgeServer;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.network.chat.Component;
 import org.cef.CefSettings;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.handler.CefDisplayHandlerAdapter;
 import org.cef.handler.CefLoadHandler;
 import org.cef.handler.CefLoadHandlerAdapter;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Vollbild-Browser (MCEF). Leitet Maus, Mausrad und Tastatur an Chromium weiter.
+ * Vollbild-Browser (MCEF) mit dem Editor. Leitet Maus, Mausrad und Tastatur an Chromium weiter.
+ * <p>
+ * Esc geht zuerst an die Seite: Sie schließt damit ihre Dialoge und meldet über {@code /api/ui/close},
+ * wenn der Bildschirm zugehen soll. Sicherheitsnetz: Hat sich die Seite nicht als bereit gemeldet
+ * ({@code /api/ui/ready}) oder kommt Esc zweimal schnell hintereinander, schließt der Bildschirm sofort.
  */
 public class MCPainterScreen extends Screen {
+    private static final long DOUBLE_ESC_MS = 400;
+
     private final String url;
     private MCEFBrowser browser;
     private int ticks;
+    private boolean zoomApplied;
+    private long lastEsc;
+    private volatile boolean pageReady;
 
     public MCPainterScreen(String url) {
         super(Component.translatable("mcpainter.screen.title"));
@@ -74,6 +82,8 @@ public class MCPainterScreen extends Screen {
         installHandlers();
         MCPainter.LOGGER.info("MCPainter öffnet {}", url.replaceAll("token=[0-9a-f]+", "token=…"));
         browser = MCEF.createBrowser(url, false);
+        // Strg + / Strg − / Strg 0 zoomen, Strg R lädt neu
+        browser.useBrowserControls(true);
         resizeBrowser();
     }
 
@@ -81,6 +91,19 @@ public class MCPainterScreen extends Screen {
         if (browser == null) return;
         Window w = minecraft.getWindow();
         if (w.getWidth() > 0 && w.getHeight() > 0) browser.resize(w.getWidth(), w.getHeight());
+    }
+
+    /**
+     * Zoom wie im normalen Browser: Windows-Skalierung (z. B. 150 %) übernehmen,
+     * sonst wäre die Oberfläche auf hochauflösenden Bildschirmen winzig.
+     */
+    private void applyZoom() {
+        float[] xs = new float[1], ys = new float[1];
+        GLFW.glfwGetWindowContentScale(minecraft.getWindow().getWindow(), xs, ys);
+        double scale = Math.max(1.0, xs[0]);
+        // Chromium: Faktor = 1,2 ^ Stufe
+        browser.setZoomLevel(Math.log(scale) / Math.log(1.2));
+        MCPainter.LOGGER.info("MCPainter: Zoom {} % (Windows-Skalierung)", Math.round(scale * 100));
     }
 
     @Override
@@ -94,40 +117,28 @@ public class MCPainterScreen extends Screen {
         ticks++;
         // MCEF lädt beim ersten Start Chromium herunter; so lange warten wir.
         createBrowserIfReady();
-        if (DevAutotest.ENABLED && browser != null && ticks == 120) simulateInput();
-        // Autotest: echtes Bild aus Minecraft speichern (screenshots/), um das Zeichnen der Textur zu prüfen
-        if (DevAutotest.ENABLED && browser != null && ticks == 180) {
-            MCPainter.LOGGER.info("MCPainter-Autotest: Textur-ID {}", browser.getRenderer().getTextureID());
-            Screenshot.grab(minecraft.gameDirectory, "mcpainter-autotest.png", minecraft.getMainRenderTarget(),
-                    msg -> MCPainter.LOGGER.info("MCPainter-Autotest: {}", msg.getString()));
+        if (browser != null && !zoomApplied && !browser.isLoading()) {
+            zoomApplied = true;
+            applyZoom();
         }
-        if (DevAutotest.ENABLED && ticks == 1200) {
-            MCPainter.LOGGER.error("MCPainter-Autotest: kein Ergebnis nach 60 s, Spiel wird beendet");
-            minecraft.stop();
-        }
+        DevAutotest.screenTick(this);
     }
 
-    /** Autotest: zeichnet einen Strich, tippt Text und dreht das Mausrad, als ob ein Spieler es täte. */
-    private void simulateInput() {
-        MCPainter.LOGGER.info("MCPainter-Autotest: simuliere Eingaben");
-        browser.setFocus(true);
-        browser.sendMouseMove(60, 140);
-        browser.sendMousePress(60, 140, 0);
-        for (int i = 1; i <= 20; i++) browser.sendMouseMove(60 + i * 12, 140 + i * 5);
-        browser.sendMouseRelease(300, 240, 0);
-        // Rechtsklick (Minecraft-Taste 1) auf die Zeichenfläche
-        browser.sendMousePress(100, 200, 1);
-        browser.sendMouseRelease(100, 200, 1);
-        browser.sendMouseWheel(200, 200, -1, 0);
-        // ins Textfeld klicken und tippen, in der Reihenfolge, in der Minecraft die Ereignisse liefert
-        browser.sendMousePress(100, 417, 0);
-        browser.sendMouseRelease(100, 417, 0);
-        for (char c : "Mä".toCharArray()) {
-            int key = c == 'M' ? GLFW.GLFW_KEY_M : GLFW.GLFW_KEY_APOSTROPHE;
-            browser.sendKeyPress(key, 0, c == 'M' ? GLFW.GLFW_MOD_SHIFT : 0);
-            browser.sendKeyTyped(c, 0);
-            browser.sendKeyRelease(key, 0, 0);
-        }
+    MCEFBrowser browser() {
+        return browser;
+    }
+
+    int ticks() {
+        return ticks;
+    }
+
+    /** Die Seite hat sich gemeldet und kümmert sich ab jetzt selbst um Esc. */
+    public void markReady() {
+        pageReady = true;
+    }
+
+    public boolean isPageReady() {
+        return pageReady;
     }
 
     @Override
@@ -157,6 +168,7 @@ public class MCPainterScreen extends Screen {
 
     @Override
     public boolean isPauseScreen() {
+        // Das Spiel läuft weiter, damit ein Bau im Hintergrund vorankommt
         return false;
     }
 
@@ -222,8 +234,16 @@ public class MCPainterScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int mods) {
-        // Esc schließt den Bildschirm (ab Etappe 2: erst Dialoge im Editor, dann den Bildschirm)
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) return super.keyPressed(keyCode, scanCode, mods);
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+            long now = System.currentTimeMillis();
+            boolean doubleEsc = now - lastEsc < DOUBLE_ESC_MS;
+            lastEsc = now;
+            if (browser == null || !pageReady || doubleEsc) {
+                MCPainter.LOGGER.info("MCPainter: Esc schließt direkt ({})", browser == null ? "kein Browser" : !pageReady ? "Seite nicht bereit" : "doppeltes Esc");
+                onClose();
+                return true;
+            }
+        }
         if (browser == null) return false;
         browser.setFocus(true);
         browser.sendKeyPress(keyCode, scanCode, mods);

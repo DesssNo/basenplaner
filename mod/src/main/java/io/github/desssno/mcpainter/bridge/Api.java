@@ -52,9 +52,17 @@ public final class Api {
 
     /** Nur im Entwicklungs-Autotest gesetzt: {@code POST /api/dev/quit} beendet das Spiel. */
     private static volatile Runnable devQuit;
+    private static volatile Runnable uiReady = () -> {};
+    private static volatile Runnable uiClose = () -> {};
 
     public static void setDevQuit(Runnable quit) {
         devQuit = quit;
+    }
+
+    /** Der Editor im Spiel meldet sich bereit bzw. möchte den Bildschirm schließen (Esc ohne offenen Dialog). */
+    public static void setUiHooks(Runnable ready, Runnable close) {
+        uiReady = ready;
+        uiClose = close;
     }
 
     static JsonObject handle(Request r) {
@@ -64,6 +72,16 @@ public final class Api {
             devQuit.run();
             return new JsonObject();
         }
+        if (post && path.equals("/api/ui/ready")) {
+            uiReady.run();
+            return new JsonObject();
+        }
+        if (post && path.equals("/api/ui/close")) {
+            uiClose.run();
+            return new JsonObject();
+        }
+        if (get && path.equals("/api/plan")) return PlanStore.load(onServerPath());
+        if (post && path.equals("/api/plan")) return PlanStore.save(onServerPath(), r.body());
         if (get && path.equals("/api/hello")) return hello();
         if (post && path.equals("/api/build")) return build(r);
         if (post && path.equals("/api/undo")) return undo();
@@ -217,6 +235,13 @@ public final class Api {
     /** Bauen dürfen der Welt-Besitzer im Einzelspieler und OPs ab Level 2 (Konzept Abschnitt 4). */
     private static boolean canBuild(MinecraftServer s, ServerPlayer p) {
         return p != null && (s.isSingleplayerOwner(p.getGameProfile()) || p.hasPermissions(2));
+    }
+
+    /** Ordner der geöffneten Welt. */
+    private static java.nio.file.Path onServerPath() {
+        MinecraftServer server = serverSupplier.get();
+        if (server == null) throw new ApiException(409, "Keine Welt geöffnet");
+        return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
     }
 
     /** Führt {@code fn} auf dem Server-Thread aus und wartet auf das Ergebnis. */

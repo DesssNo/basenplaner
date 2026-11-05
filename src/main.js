@@ -45,6 +45,9 @@ class App {
     this.seedValue = null
     this.view3d = new View3D(this)
     this.bridge = new Bridge()
+    // Minecraft-Modus: die Seite läuft im Spiel (MCPainter-Mod), ausgeliefert von der Brücke
+    this.inGame = Bridge.inGame()
+    this.player = null
   }
 
   get block() { return this.hotbar[this.slot] }
@@ -56,8 +59,11 @@ class App {
     this.bindCanvas()
     this.bindKeys()
     new ResizeObserver(() => this.resize()).observe($('#stage'))
-    const saved = await store.load('autosave')
-    if (saved) {
+    if (this.inGame) document.body.classList.add('mc')
+    // Im Spiel gehört der Plan zur Welt (im Weltordner gespeichert), sonst zum Browser
+    const hello = await this.bridge.connect()
+    const saved = this.inGame ? await this.bridge.get('/api/plan').catch(() => null) : await store.load('autosave')
+    if (saved?.project) {
       try {
         this.setProject(Project.fromJSON(saved.project))
         Object.assign(this.view, saved.view ?? {})
@@ -70,8 +76,67 @@ class App {
     }
     this.syncSettingsUI()
     this.refreshAll()
-    if (!this.project.seed) this.toast('Tipp: Gib rechts deinen Seed ein, um die echte Weltkarte als Untergrund zu laden.', 6000)
-    this.bridge.connect().then(h => this.onBridge(h))
+    this.onBridge(hello)
+    if (this.inGame) this.startInGame(hello)
+    else if (!this.project.seed) this.toast('Tipp: Gib rechts deinen Seed ein, um die echte Weltkarte als Untergrund zu laden.', 6000)
+  }
+
+  // Editor im Spiel: Ansicht auf den Spieler, Ebene auf Fußhöhe, dann dem Mod melden, dass Esc hier ankommt
+  startInGame(hello) {
+    const p = hello?.player
+    if (p) {
+      this.player = p
+      this.view.cx = p.x
+      this.view.cz = p.z
+      this.view.scale = Math.max(this.view.scale, 8)
+      this.setY(Math.floor(p.y))
+      this.redraw()
+    }
+    if (!hello?.inWorld) this.toast('Keine Welt geöffnet – Bauen geht erst in einer Welt.', 5000)
+    this.bridge.post('/api/ui/ready').catch(() => {})
+    if (new URLSearchParams(location.search).has('autotest')) this.selftest()
+  }
+
+  // Für den Entwicklungs-Autotest des Mods: Zustand melden und einen Dialog öffnen (Esc-Test)
+  async selftest() {
+    const hidden = sel => { const el = $(sel); return !el || getComputedStyle(el).display === 'none' }
+    const state = {
+      inGame: this.inGame,
+      exportHidden: hidden('[data-action=export]'),
+      pngHidden: hidden('[data-action=png]'),
+      seedHidden: hidden('#seed-box'),
+      pairHidden: hidden('#mc-pair'),
+      buildShown: !hidden('#mc-build'),
+      teleportTool: !!$('#toolbar [data-tool=teleport]'),
+      view: { x: Math.round(this.view.cx), z: Math.round(this.view.cz) },
+      currentY: this.currentY,
+      player: this.player && { x: Math.round(this.player.x), y: Math.floor(this.player.y), z: Math.round(this.player.z) },
+    }
+    this.confirm('Autotest', 'Esc schließt diesen Dialog, das zweite Esc den Editor.')
+    state.dialogOpen = $('#dialog').open
+    await this.bridge.post('/api/selftest', JSON.stringify(state)).catch(() => {})
+  }
+
+  drawPlayer(ctx) {
+    if (!this.player) return
+    const [x, z] = this.toScreen(this.player.x, this.player.z)
+    const r = Math.max(9, Math.min(16, this.view.scale * 0.6))
+    // Minecraft: Blickrichtung 0° = Süden (+Z), 90° = Westen (−X)
+    const yaw = this.player.yaw * Math.PI / 180
+    const dx = -Math.sin(yaw), dz = Math.cos(yaw)
+    ctx.save()
+    ctx.translate(x, z)
+    ctx.fillStyle = '#ffd34e'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(dx * r * 1.8, dz * r * 1.8)
+    ctx.lineTo(-dz * r * 0.9 - dx * r * 0.6, dx * r * 0.9 - dz * r * 0.6)
+    ctx.lineTo(dz * r * 0.9 - dx * r * 0.6, -dx * r * 0.9 - dz * r * 0.6)
+    ctx.closePath()
+    ctx.fill(); ctx.stroke()
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2); ctx.fillStyle = '#1a1a1a'; ctx.fill()
+    ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textBaseline = 'middle'
+    ctx.lineWidth = 3; ctx.strokeText('Du', r * 1.4, -r * 1.4); ctx.fillStyle = '#ffd34e'; ctx.fillText('Du', r * 1.4, -r * 1.4)
+    ctx.restore()
   }
 
   // ---------- Minecraft (MCPainter-Mod) ----------
@@ -333,6 +398,7 @@ class App {
     this.drawHover(ctx)
     this.drawMeasure(ctx)
     this.drawTpTarget(ctx)
+    this.drawPlayer(ctx)
     const info = $('#optionsbar .info')
     if (info) info.textContent = this.tool.info?.(this) ?? ''
   }
@@ -849,9 +915,14 @@ class App {
     this.redraw()
   }
 
+  // Im Spiel ohne Teleport-Befehl-Werkzeug: /tp kopieren ist dort sinnlos (direkter Teleport folgt mit Etappe 3)
+  tools() {
+    return this.inGame ? TOOLS.filter(t => t.id !== 'teleport') : TOOLS
+  }
+
   buildToolbar() {
     const bar = $('#toolbar')
-    bar.innerHTML = TOOLS.map(t => `${['pencil', 'fill', 'picker'].includes(t.id) ? '<hr>' : ''}<button data-tool="${t.id}" title="${t.name} (${t.key.toUpperCase()})" aria-label="${t.name}">${ICONS[t.id]}</button>`).join('')
+    bar.innerHTML = this.tools().map(t => `${['pencil', 'fill', 'picker'].includes(t.id) ? '<hr>' : ''}<button data-tool="${t.id}" title="${t.name} (${t.key.toUpperCase()})" aria-label="${t.name}">${ICONS[t.id]}</button>`).join('')
     bar.onclick = e => { const b = e.target.closest('button'); if (b) this.setTool(b.dataset.tool) }
     $('[data-action=undo]').innerHTML = ICONS.undo
     $('[data-action=redo]').innerHTML = ICONS.redo
@@ -1435,7 +1506,9 @@ class App {
   scheduleSave() {
     clearTimeout(this.saveTimer)
     this.saveTimer = setTimeout(() => {
-      store.save('autosave', { project: this.project.toJSON(), view: this.view, settings: this.settings, hotbar: this.hotbar, currentY: this.currentY })
+      const data = { project: this.project.toJSON(), view: this.view, settings: this.settings, hotbar: this.hotbar, currentY: this.currentY }
+      if (this.inGame) this.bridge.post('/api/plan', JSON.stringify(data)).catch(e => this.toast('Plan nicht gespeichert: ' + e.message, 5000))
+      else store.save('autosave', data)
     }, 1500)
   }
 
@@ -1528,7 +1601,13 @@ class App {
 
   bindKeys() {
     window.addEventListener('keydown', e => {
-      if (e.target.closest?.('input, select, textarea, dialog')) return
+      // Dialoge schließen sich bei Esc selbst
+      if (e.target.closest?.('dialog') || $('#dialog').open) return
+      if (e.target.closest?.('input, select, textarea')) {
+        // Im Spiel: Esc verlässt das Eingabefeld, damit das nächste Esc den Editor schließen kann
+        if (e.key === 'Escape' && this.inGame) e.target.blur()
+        return
+      }
       if (this.view3d.isOpen) { if (e.key === 'Escape') this.view3d.close(); return }
       const k = e.key.toLowerCase()
       if (e.ctrlKey || e.metaKey) {
@@ -1545,7 +1624,13 @@ class App {
       if (e.key === 'PageUp') { e.preventDefault(); return this.setY(this.currentY + 1) }
       if (e.key === 'PageDown') { e.preventDefault(); return this.setY(this.currentY - 1) }
       if (e.key === 'Escape' && this.tpCell) { this.closeTpMenu(); return }
-      if (e.key === 'Escape') { this.dropFloating(); this.selection = null; this.tool.a = null; this.active = null; this.redraw(); return }
+      if (e.key === 'Escape') {
+        const busy = this.floating || this.selection || this.tool.a || this.active
+        this.dropFloating(); this.selection = null; this.tool.a = null; this.active = null; this.redraw()
+        // Im Spiel: Esc ohne offene Auswahl o. Ä. schließt den Editor
+        if (!busy && this.inGame) this.bridge.post('/api/ui/close').catch(() => {})
+        return
+      }
       if (e.key === 'Enter') { this.dropFloating(); return }
       if (e.key === 'Delete' || e.key === 'Backspace') { this.deleteSelection(); return }
       if (/^[1-9]$/.test(e.key)) { this.slot = +e.key - 1; this.refreshBlock(); return }
@@ -1557,7 +1642,7 @@ class App {
       if (k === 'q') { this.transformFloating('rotate'); return }
       // Shift+R: Ctrl+H would open the browser history
       if (k === 'r' && e.shiftKey) { this.action('replace'); return }
-      const tool = TOOLS.find(t => t.key === k)
+      const tool = this.tools().find(t => t.key === k)
       if (tool) this.setTool(tool.id)
     })
     window.addEventListener('keyup', e => {
