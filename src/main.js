@@ -30,7 +30,7 @@ class App {
     this.hotbar = ['stone_bricks', 'oak_planks', 'spruce_log', 'glass', 'smooth_stone', 'deepslate_tiles', 'lantern', 'chest', 'water'].map(id => 'minecraft:' + id)
     this.slot = 0
     this.tool = TOOLS.find(t => t.id === 'pencil')
-    this.options = { brush: 1, round: false, filled: false, symX: false, symZ: false, sym: { x: 0, z: 0 }, allLayers: false }
+    this.options = { brush: 1, round: false, filled: false, sides: 6, rotated: false, symX: false, symZ: false, sym: { x: 0, z: 0 }, allLayers: false }
     this.settings = { grid: true, chunks: true, biomes: true, relief: true, alpha: 0.8, slime: false, ghost: true }
     this.selection = null
     this.floating = null
@@ -378,7 +378,7 @@ class App {
 
   // Brush footprint + symmetry mirrors
   expand(cells, withSym = true) {
-    const n = ['pencil', 'eraser', 'line', 'rect', 'ellipse'].includes(this.tool.id) ? this.options.brush : 1
+    const n = ['pencil', 'eraser', 'line', 'rect', 'ellipse', 'polygon'].includes(this.tool.id) ? this.options.brush : 1
     const lo = -Math.floor((n - 1) / 2), hi = Math.ceil((n - 1) / 2)
     const offs = []
     for (let dz = lo; dz <= hi; dz++) {
@@ -572,7 +572,7 @@ class App {
 
   buildToolbar() {
     const bar = $('#toolbar')
-    bar.innerHTML = TOOLS.map((t, i) => `${i === 1 || i === 6 || i === 8 ? '<hr>' : ''}<button data-tool="${t.id}" title="${t.name} (${t.key.toUpperCase()})" aria-label="${t.name}">${ICONS[t.id]}</button>`).join('')
+    bar.innerHTML = TOOLS.map(t => `${['pencil', 'fill', 'picker'].includes(t.id) ? '<hr>' : ''}<button data-tool="${t.id}" title="${t.name} (${t.key.toUpperCase()})" aria-label="${t.name}">${ICONS[t.id]}</button>`).join('')
     bar.onclick = e => { const b = e.target.closest('button'); if (b) this.setTool(b.dataset.tool) }
     $('[data-action=undo]').innerHTML = ICONS.undo
     $('[data-action=redo]').innerHTML = ICONS.redo
@@ -582,9 +582,15 @@ class App {
   buildOptions() {
     const o = this.options, t = this.tool.id
     const parts = [`<span class="label">${this.tool.name}</span><span class="sep"></span>`]
-    if (['pencil', 'eraser', 'line', 'rect', 'ellipse'].includes(t)) {
+    if (['pencil', 'eraser', 'line', 'rect', 'ellipse', 'polygon'].includes(t)) {
       parts.push(`<label>Größe <input type="range" min="1" max="15" value="${o.brush}" data-opt="brush"> <b>${o.brush}</b></label>`)
       if (t === 'pencil' || t === 'eraser') parts.push(`<label><input type="checkbox" data-opt="round" ${o.round ? 'checked' : ''}> Rund</label>`)
+    }
+    if (t === 'polygon') {
+      parts.push(`<span class="label">Ecken</span>${[5, 6, 7, 8].map(n => `<button data-sides="${n}" class="${o.sides === n ? 'on' : ''}" title="${['Fünfeck', 'Sechseck', 'Siebeneck', 'Achteck'][n - 5]}">${n}</button>`).join('')}
+        <label><input type="checkbox" data-opt="filled" ${o.filled ? 'checked' : ''}> Gefüllt</label>
+        <label title="Spitze statt flache Seite oben (bzw. umgekehrt)"><input type="checkbox" data-opt="rotated" ${o.rotated ? 'checked' : ''}> Gedreht</label>
+        <span class="label">Shift = gleich breit wie hoch</span>`)
     }
     if (t === 'rect' || t === 'ellipse') parts.push(`<label><input type="checkbox" data-opt="filled" ${o.filled ? 'checked' : ''}> Gefüllt</label><span class="label">Shift = ${t === 'rect' ? 'Quadrat' : 'Kreis'}</span>`)
     if (t === 'line') parts.push('<span class="label">Shift = gerade / 45°</span>')
@@ -619,6 +625,7 @@ class App {
     bar.onclick = e => {
       const b = e.target.closest('button')
       if (!b) return
+      if (b.dataset.sides) { o.sides = +b.dataset.sides; this.buildOptions(); this.redraw() }
       if (b.dataset.optToggle) { o[b.dataset.optToggle] = !o[b.dataset.optToggle]; this.buildOptions(); this.redraw() }
       const cmd = b.dataset.cmd
       if (cmd === 'copy') this.copy(false)
@@ -1178,6 +1185,7 @@ class App {
         return
       }
       if (e.button !== 0 && e.button !== 2) return
+      this.hover = cell // so the first move away from here counts
       if (this.tool.id !== 'select') this.dropFloating()
       this.active = this.tool
       this.lastCell = cell

@@ -38,6 +38,40 @@ export function ellipseCells(a, b, filled) {
   return out
 }
 
+// Regular polygon (5-8 sides) fitted centered into the dragged box.
+// Odd polygons point up; even ones get flat sides on the axes (rotated = the other way round).
+export function polygonCells(a, b, filled, sides, rotated) {
+  const x1 = Math.min(a.x, b.x), x2 = Math.max(a.x, b.x), z1 = Math.min(a.z, b.z), z2 = Math.max(a.z, b.z)
+  const w = x2 - x1 + 1, h = z2 - z1 + 1
+  if (w < 3 || h < 3) return rectCells(a, b, filled)
+  const start = -Math.PI / 2 + ((sides % 2 === 0) !== rotated ? Math.PI / sides : 0)
+  const unit = Array.from({ length: sides }, (_, i) => [Math.cos(start + i * 2 * Math.PI / sides), Math.sin(start + i * 2 * Math.PI / sides)])
+  const minX = Math.min(...unit.map(p => p[0])), maxX = Math.max(...unit.map(p => p[0]))
+  const minZ = Math.min(...unit.map(p => p[1])), maxZ = Math.max(...unit.map(p => p[1]))
+  const scale = Math.min(w / (maxX - minX), h / (maxZ - minZ)) * 1.0001
+  const ox = x1 + (w - (maxX - minX) * scale) / 2 - minX * scale, oz = z1 + (h - (maxZ - minZ) * scale) / 2 - minZ * scale
+  const pts = unit.map(([px, pz]) => [ox + px * scale, oz + pz * scale])
+  // Cell is inside when its center is inside the polygon (ray casting)
+  const inside = (x, z) => {
+    if (x < x1 || x > x2 || z < z1 || z > z2) return false
+    const px = x + 0.5, pz = z + 0.5
+    let hit = false
+    for (let i = 0, j = sides - 1; i < sides; j = i++) {
+      const [xi, zi] = pts[i], [xj, zj] = pts[j]
+      if ((zi > pz) !== (zj > pz) && px < (xj - xi) * (pz - zi) / (zj - zi) + xi) hit = !hit
+    }
+    return hit
+  }
+  const out = []
+  for (let z = z1; z <= z2; z++) {
+    for (let x = x1; x <= x2; x++) {
+      if (!inside(x, z)) continue
+      if (filled || !inside(x + 1, z) || !inside(x - 1, z) || !inside(x, z + 1) || !inside(x, z - 1)) out.push([x, z])
+    }
+  }
+  return out
+}
+
 // Constrain end point for Shift (square / circle / 45° line)
 function constrain(a, b, e, mode) {
   if (!e.shiftKey) return b
@@ -80,11 +114,11 @@ const shapeTool = (id, name, key, cells, mode) => ({
   up(app) {
     if (!this.a) return
     app.project.begin()
-    app.paint(cells(this.a, this.b, app.options.filled), this.value)
+    app.paint(cells(this.a, this.b, app.options.filled, app), this.value)
     app.project.commit(name)
     this.a = null
   },
-  preview(app) { return this.a ? cells(this.a, this.b, app.options.filled) : null },
+  preview(app) { return this.a ? cells(this.a, this.b, app.options.filled, app) : null },
   info() {
     if (!this.a) return ''
     return `${Math.abs(this.b.x - this.a.x) + 1} × ${Math.abs(this.b.z - this.a.z) + 1}`
@@ -98,6 +132,7 @@ export const TOOLS = [
   shapeTool('line', 'Linie', 'l', (a, b) => [...line(a.x, a.z, b.x, b.z)], 'line'),
   shapeTool('rect', 'Rechteck', 'r', rectCells, 'box'),
   shapeTool('ellipse', 'Kreis / Ellipse', 'o', ellipseCells, 'box'),
+  shapeTool('polygon', 'Vieleck', 'n', (a, b, filled, app) => polygonCells(a, b, filled, app.options.sides, app.options.rotated), 'box'),
   {
     id: 'fill', name: 'Füllen', key: 'g',
     down(app, c, e) { app.floodFill(c, e.button === 2 ? 0 : app.currentValue()) },

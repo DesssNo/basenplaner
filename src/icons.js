@@ -8,6 +8,7 @@ export const ICONS = {
   line: svg('<path d="M5 19L19 5"/><circle cx="5" cy="19" r="1.6"/><circle cx="19" cy="5" r="1.6"/>'),
   rect: svg('<rect x="4" y="6" width="16" height="12" rx="1"/>'),
   ellipse: svg('<circle cx="12" cy="12" r="8"/>'),
+  polygon: svg('<path d="M7.5 4.2h9l4.5 7.8-4.5 7.8h-9L3 12z"/>'),
   fill: svg('<path d="M4.5 11.5L12 4l7.5 7.5L12 19z"/><path d="M4.5 11.5h15"/><path d="M20 15.5c.8 1.3 1.5 2.3 1.5 3a1.5 1.5 0 0 1-3 0c0-.7.7-1.7 1.5-3z"/>'),
   select: svg('<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4M11 4h2M11 20h2M4 11v2M20 11v2"/>'),
   picker: svg('<path d="M14.5 4.5l5 5-2 2-5-5z"/><path d="M13 7L5 15v4h4l8-8"/>'),
