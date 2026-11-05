@@ -47,3 +47,6 @@ npm run build
 - `tools/gen_biome_params.js`: Portierung von Minecrafts `OverworldBiomeBuilder`. Sie wurde gegen den offiziellen 1.19.2-Report geprüft (7593/7593 Einträge identisch).
 - `tools/test-export.mjs`: liest die exportierten Schematics mit einem unabhängigen NBT-Leser zurück.
 - `tools/test-import.mjs`: Import-Tests (Round-Trip, Sponge v3, Strukturdateien, Litematic mit mehreren Regionen).
+
+## Geplant
+- [MCPainter: der Basenplaner direkt in Minecraft](docs/MCPainter-Konzept.md) (Konzept für einen NeoForge-1.21.1-Mod, noch nicht gebaut)
