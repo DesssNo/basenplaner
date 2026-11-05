@@ -1,5 +1,7 @@
 # Basenplaner
 
+> **Für Claude Code:** Hier liegt ein offener Auftrag. Lies [`AUFTRAG-MCPAINTER.md`](AUFTRAG-MCPAINTER.md) und setz ihn um (NeoForge-1.21.1-Mod, der diesen Planer in Minecraft einbaut). Die Spezifikation steht in [`docs/MCPainter-Konzept.md`](docs/MCPainter-Konzept.md).
+
 Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Schematic-Export.
 
 **Online benutzen:** https://desssno.github.io/basenplaner/
@@ -49,4 +51,4 @@ npm run build
 - `tools/test-import.mjs`: Import-Tests (Round-Trip, Sponge v3, Strukturdateien, Litematic mit mehreren Regionen).
 
 ## Geplant
-- [MCPainter: der Basenplaner direkt in Minecraft](docs/MCPainter-Konzept.md) (Konzept für einen NeoForge-1.21.1-Mod, noch nicht gebaut)
+- [MCPainter: der Basenplaner direkt in Minecraft](docs/MCPainter-Konzept.md): NeoForge-1.21.1-Mod mit Editor im Spiel, Bauen direkt in der Welt, Biomen und Blöcken aus dem Modpack. Noch nicht gebaut; Umsetzungsplan in [`AUFTRAG-MCPAINTER.md`](AUFTRAG-MCPAINTER.md).
