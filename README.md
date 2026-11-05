@@ -32,6 +32,7 @@ Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Sc
 | Q | Auswahl um 90° drehen |
 | Strg+Z / Strg+Y | Rückgängig / Wiederholen |
 | Strg+C / X / V | Kopieren / Ausschneiden / Einfügen |
+| Strg+H | Blöcke ersetzen (ganzer Plan, Ebene oder Auswahl) |
 | Leertaste + Ziehen, mittlere Maustaste | Ansicht verschieben |
 | Rechtsklick (Malwerkzeuge) | Radieren |
 

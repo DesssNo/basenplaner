@@ -1,5 +1,5 @@
 import { BIOMES } from './biomes.js'
-import { BLOCK_GROUPS, blockInfo, normalizeBlockId } from './blocks.js'
+import { BLOCK_GROUPS, baseId, blockInfo, normalizeBlockId } from './blocks.js'
 import { download, exportLitematic, exportSponge } from './export.js'
 import { readSchematic } from './import.js'
 import { ICONS } from './icons.js'
@@ -867,6 +867,7 @@ class App {
       case 'undo': this.undo(); break
       case 'redo': this.redoAction(); break
       case 'materials': this.showMaterials(); break
+      case 'replace': this.showReplace(); break
       case 'png': this.canvas.toBlob(b => download(b, `${this.fileName()}.png`, 'image/png')); break
       case 'export': this.showExport(); break
       case 'layer-up': this.setY(this.currentY + 1); break
@@ -922,6 +923,72 @@ class App {
 
   fileName() {
     return (this.project.name || 'basenplan').replace(/[^\w\-äöüÄÖÜß ]+/g, '').trim().replace(/\s+/g, '_') || 'basenplan'
+  }
+
+  async showReplace() {
+    const used = this.project.materials()
+    if (!used.length) return this.toast('Noch keine Blöcke gesetzt.')
+    // Preselect the block under the mouse, otherwise the most common one
+    const under = this.hover && this.project.get(this.currentY, this.hover.x, this.hover.z)
+    const from = under ? this.project.palette[under] : used[0][0]
+    const opt = (id, sel, extra = '') => `<option value="${esc(id)}" ${sel ? 'selected' : ''}>${esc(blockInfo(id).name)}${extra}</option>`
+    const groups = BLOCK_GROUPS.map(([g, list]) => `<optgroup label="${esc(g)}">${list.map(([id]) => opt('minecraft:' + id, false)).join('')}</optgroup>`).join('')
+    const sel = this.selection
+    const r = await this.dialog('Blöcke ersetzen', `
+      <label class="field"><span>Ersetze</span><select name="from">${used.map(([id, n]) => opt(id, id === from, ` (${n.toLocaleString('de-DE')})`)).join('')}</select></label>
+      <label class="field"><span>durch</span><select name="to">
+        <optgroup label="Hotbar">${[...new Set(this.hotbar)].map(id => opt(id, id === this.block)).join('')}</optgroup>
+        <optgroup label="Entfernen"><option value="">Luft (Blöcke löschen)</option></optgroup>
+        ${groups}
+      </select></label>
+      <label class="field"><span>… oder eigene Block-ID</span><input name="custom" placeholder="z. B. spruce_stairs" spellcheck="false"></label>
+      <label class="field"><span>Bereich</span><select name="scope">
+        <option value="all">Ganzer Plan (alle Ebenen)</option>
+        <option value="layer">Nur aktuelle Ebene (Y ${this.currentY})</option>
+        ${sel ? `<option value="sel" selected>Nur Auswahl ${sel.x2 - sel.x1 + 1}×${sel.z2 - sel.z1 + 1} (${this.options.allLayers ? 'alle Ebenen' : `Ebene Y ${this.currentY}`})</option>` : ''}
+      </select></label>
+      <label class="check"><input type="checkbox" name="variants"> Alle Varianten ersetzen (z. B. Treppen in jede Richtung) – Ausrichtung bleibt erhalten</label>`,
+    [['cancel', 'Abbrechen'], ['ok', 'Ersetzen', true]])
+    if (r !== 'ok') return
+    const f = $('#dialog form').elements
+    let to = f.to.value
+    if (f.custom.value.trim()) {
+      to = normalizeBlockId(f.custom.value)
+      if (!to) return this.toast('Ungültige Block-ID. Beispiel: minecraft:spruce_stairs')
+    }
+    const n = this.replaceBlocks({ from: f.from.value, to, scope: f.scope.value, variants: f.variants.checked })
+    this.toast(n ? `${n.toLocaleString('de-DE')} Blöcke ersetzt. (Strg+Z macht es rückgängig)` : 'Keine passenden Blöcke im gewählten Bereich gefunden.', 4000)
+  }
+
+  // Replace blocks; with variants, "oak_stairs[facing=east]" -> "spruce_stairs[facing=east]"
+  replaceBlocks({ from, to, scope, variants }) {
+    const p = this.project
+    const map = new Map()
+    p.palette.forEach((id, i) => {
+      if (!id || !(variants ? baseId(id) === baseId(from) : id === from)) return
+      if (!to) return map.set(i, 0)
+      // Keep block states only between the same kind of block (stairs -> stairs, log -> log)
+      const kind = x => baseId(x).split('_').pop()
+      const target = variants && !to.includes('[') && id.includes('[') && kind(id) === kind(to) ? to + id.slice(id.indexOf('[')) : to
+      if (target !== id) map.set(i, p.blockIndex(target))
+    })
+    if (!map.size) return 0
+    const s = this.selection
+    const inSel = (x, z) => x >= s.x1 && x <= s.x2 && z >= s.z1 && z <= s.z2
+    const ys = scope === 'layer' || (scope === 'sel' && !this.options.allLayers) ? [this.currentY] : [...p.layers.keys()]
+    let n = 0
+    p.begin()
+    for (const y of ys) {
+      const layer = p.layer(y)
+      if (!layer) continue
+      for (const [x, z, v] of [...layer.cells()]) {
+        if (!map.has(v) || (scope === 'sel' && !inSel(x, z))) continue
+        p.set(y, x, z, map.get(v))
+        n++
+      }
+    }
+    p.commit('Ersetzen')
+    return n
   }
 
   showMaterials() {
@@ -1177,6 +1244,7 @@ class App {
         else if (k === 'x') { e.preventDefault(); this.copy(true) }
         else if (k === 'v') { e.preventDefault(); this.paste() }
         else if (k === 's') { e.preventDefault(); this.action('save') }
+        else if (k === 'h') { e.preventDefault(); this.action('replace') }
         else if (k === 'a') { e.preventDefault(); const b = this.project.layer(this.currentY)?.bounds(); if (b) { this.setTool('select'); this.selection = b; this.redraw() } }
         return
       }
