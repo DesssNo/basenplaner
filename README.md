@@ -13,7 +13,7 @@ Top-down-Planer für Minecraft-Basen (Java Edition) mit echter Seed-Karte und Sc
 ## Funktionen
 - **Seed-Karte:** exakte Oberwelt-Biome für Java 26.3, dazu eine Höhenschätzung als Relief und Slime-Chunks
 - **Werkzeuge:** Stift, Radierer, Linie, Rechteck, Kreis/Ellipse, Vieleck (5–8 Ecken), Füllen, Auswahl und Zauberstab (verschieben mit pinken Hilfslinien zum Ausrichten, kopieren, drehen, spiegeln), Pipette, Messen, Zonen
-- **Ebenen** pro Y-Höhe, darunterliegende Ebenen scheinen durch; „Hochziehen“ kopiert eine Ebene mehrfach nach oben (für Wände)
+- **Ebenen** pro Y-Höhe, darunterliegende Ebenen scheinen durch; „Hochziehen“ kopiert eine Ebene mehrfach nach oben (für Wände), „Runterziehen“ nach unten (für Fundamente und Pfeiler)
 - **Symmetrie** in X/Z, Pinselgröße 1–15, Rückgängig/Wiederholen
 - **Materialliste** mit Stacks und Shulkerkisten
 - **Export** als `.litematic` (Litematica) oder `.schem` (WorldEdit/FAWE), jeweils mit den echten Weltkoordinaten

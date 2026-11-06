@@ -1361,6 +1361,17 @@ class App {
         this.toast(`Ebene Y ${this.currentY} wurde ${n}× nach oben kopiert.`)
         break
       }
+      case 'layer-extrude-down': {
+        if (!this.project.layer(this.currentY)?.count) return this.toast('Diese Ebene ist leer.')
+        const n = parseInt(await this.ask('Runterziehen', 'Wie viele Ebenen darunter sollen eine Kopie bekommen? (z. B. 4 für ein 5 Blöcke tiefes Fundament)', '4'), 10)
+        if (!(n > 0)) return
+        const count = Math.min(n, this.currentY - MIN_Y)
+        this.project.begin()
+        for (let i = 1; i <= count; i++) this.copyLayerTo(this.currentY, this.currentY - i)
+        this.project.commit('Runterziehen')
+        this.toast(`Ebene Y ${this.currentY} wurde ${count}× nach unten kopiert.`)
+        break
+      }
       case 'layer-clear': {
         const l = this.project.layer(this.currentY)
         if (!l?.count) return
