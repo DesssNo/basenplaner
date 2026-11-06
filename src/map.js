@@ -22,6 +22,10 @@ export class BiomeMap {
     this.palette = seedPalette()
     this.paletteIndex = new Map(this.palette.map((p, i) => [p.id, i]))
     this.inflight = 0
+    // Kachelgröße (feinste Stufe) und Proben je Seite: Browser 256/64, im Spiel 128/32 (gleiche Auflösung,
+    // aber kleinere Stücke: weniger Rechenarbeit für Flächen, die gar nicht zu sehen sind)
+    this.baseSize = 256
+    this.samples = SAMPLES
     this.relief = true
     this.tiles = new Map() // key -> tile
     this.pending = new Set()
@@ -41,11 +45,15 @@ export class BiomeMap {
     return this.pending.size + this.queue.length
   }
 
+  tileSize(lod) { return this.baseSize * 4 ** lod }
+
   biomeName(i) { return this.palette[i]?.name ?? '?' }
   biomeRgb(i) { return this.palette[i]?.rgb ?? [80, 80, 80] }
 
   setSeed(seed) {
     this.world = null
+    this.baseSize = 256
+    this.samples = SAMPLES
     this.palette = seedPalette()
     this.paletteIndex = new Map(this.palette.map((p, i) => [p.id, i]))
     this.seed = seed
@@ -59,6 +67,8 @@ export class BiomeMap {
   // Karte aus der Spielwelt (Brücke): mode "biomes" oder "surface" (echte Oberfläche in geladenen Chunks)
   setWorld(world, mode) {
     this.world = world
+    this.baseSize = 128
+    this.samples = 32
     this.palette = []
     this.paletteIndex = new Map()
     this.seed = '@world:' + mode
@@ -96,10 +106,14 @@ export class BiomeMap {
     if (this.seed === null) return
     const lod = lodForScale(view.scale)
     const wanted = []
-    for (const l of new Set([Math.min(2, lod + 1), lod])) {
-      const size = tileSize(l)
-      const x1 = Math.floor((view.cx - width / 2 / view.scale) / size), x2 = Math.floor((view.cx + width / 2 / view.scale) / size)
-      const z1 = Math.floor((view.cz - height / 2 / view.scale) / size), z2 = Math.floor((view.cz + height / 2 / view.scale) / size)
+    // Nur der sichtbare Bereich plus 50 % Rand (je Seite ein Viertel), damit Verschieben flüssig bleibt.
+    // Im Spiel keine zusätzliche gröbere Stufe: jede Kachel kostet dort Rechenzeit im Spiel.
+    const levels = this.world ? [lod] : new Set([Math.min(2, lod + 1), lod])
+    const mx = width * 0.25 / view.scale, mz = height * 0.25 / view.scale
+    for (const l of levels) {
+      const size = this.tileSize(l)
+      const x1 = Math.floor((view.cx - width / 2 / view.scale - mx) / size), x2 = Math.floor((view.cx + width / 2 / view.scale + mx) / size)
+      const z1 = Math.floor((view.cz - height / 2 / view.scale - mz) / size), z2 = Math.floor((view.cz + height / 2 / view.scale + mz) / size)
       for (let tz = z1; tz <= z2; tz++) {
         for (let tx = x1; tx <= x2; tx++) {
           const key = l + ':' + tx + ':' + tz
@@ -125,12 +139,13 @@ export class BiomeMap {
   }
 
   pumpWorld() {
-    while (this.inflight < 3 && this.queue.length) {
+    // höchstens zwei Kacheln gleichzeitig, damit das Spiel nicht ruckelt
+    while (this.inflight < 2 && this.queue.length) {
       const t = this.queue.shift()
-      const key = this.seed, size = tileSize(t.lod), x1 = t.tx * size, z1 = t.tz * size
+      const key = this.seed, size = this.tileSize(t.lod), x1 = t.tx * size, z1 = t.tz * size
       this.inflight++
       this.pending.add(t.key)
-      this.world.fetch(x1, z1, x1 + size - 1, z1 + size - 1, size / SAMPLES, this.mode).then(r => {
+      this.world.fetch(x1, z1, x1 + size - 1, z1 + size - 1, size / this.samples, this.mode).then(r => {
         if (key !== this.seed) return
         const map = this.mergePalette(r.palette)
         const biomes = Uint16Array.from(r.biomes, b => map[b])
@@ -160,20 +175,20 @@ export class BiomeMap {
   tileCanvas(t) {
     if (t.canvas) return t.canvas
     const c = document.createElement('canvas')
-    c.width = c.height = SAMPLES
+    c.width = c.height = this.samples
     const ctx = c.getContext('2d')
-    const img = ctx.createImageData(SAMPLES, SAMPLES)
-    const step = tileSize(t.lod) / SAMPLES
+    const img = ctx.createImageData(this.samples, this.samples)
+    const step = this.tileSize(t.lod) / this.samples
     const h = t.heights
-    for (let j = 0; j < SAMPLES; j++) {
-      for (let i = 0; i < SAMPLES; i++) {
-        const k = j * SAMPLES + i
+    for (let j = 0; j < this.samples; j++) {
+      for (let i = 0; i < this.samples; i++) {
+        const k = j * this.samples + i
         const c = t.colors?.[k] ?? -1
         const [r, g, b] = c >= 0 ? [c >> 16 & 255, c >> 8 & 255, c & 255] : this.biomeRgb(t.biomes[k])
         let f = 1
         if (this.relief) {
-          const gx = (h[j * SAMPLES + Math.min(SAMPLES - 1, i + 1)] - h[j * SAMPLES + Math.max(0, i - 1)]) / (2 * step)
-          const gz = (h[Math.min(SAMPLES - 1, j + 1) * SAMPLES + i] - h[Math.max(0, j - 1) * SAMPLES + i]) / (2 * step)
+          const gx = (h[j * this.samples + Math.min(this.samples - 1, i + 1)] - h[j * this.samples + Math.max(0, i - 1)]) / (2 * step)
+          const gz = (h[Math.min(this.samples - 1, j + 1) * this.samples + i] - h[Math.max(0, j - 1) * this.samples + i]) / (2 * step)
           f = Math.min(1.45, Math.max(0.55, 1 - (gx + gz) * 1.6)) * (0.9 + 0.2 * Math.min(1, Math.max(0, (h[k] - 60) / 140)))
         }
         img.data[k * 4] = Math.min(255, r * f)
@@ -197,7 +212,7 @@ export class BiomeMap {
     const z1 = view.cz - height / 2 / view.scale, z2 = view.cz + height / 2 / view.scale
     // Coarse tiles first as a fallback, finer ones on top
     for (let lod = 2; lod >= need; lod--) {
-      const size = tileSize(lod)
+      const size = this.tileSize(lod)
       for (let tz = Math.floor(z1 / size); tz <= Math.floor(z2 / size); tz++) {
         for (let tx = Math.floor(x1 / size); tx <= Math.floor(x2 / size); tx++) {
           const t = this.tiles.get(lod + ':' + tx + ':' + tz)
@@ -214,13 +229,13 @@ export class BiomeMap {
   // Biome index + approx height at a block position, from the finest loaded tile
   sample(x, z) {
     for (let lod = 0; lod <= 2; lod++) {
-      const size = tileSize(lod)
+      const size = this.tileSize(lod)
       const tx = Math.floor(x / size), tz = Math.floor(z / size)
       const t = this.tiles.get(lod + ':' + tx + ':' + tz)
       if (!t) continue
-      const step = size / SAMPLES
+      const step = size / this.samples
       const i = Math.floor((x - tx * size) / step), j = Math.floor((z - tz * size) / step)
-      return { biome: t.biomes[j * SAMPLES + i], height: t.heights[j * SAMPLES + i], exact: lod === 0 }
+      return { biome: t.biomes[j * this.samples + i], height: t.heights[j * this.samples + i], exact: lod === 0 }
     }
     return null
   }
@@ -228,7 +243,7 @@ export class BiomeMap {
   // Biome im sichtbaren Bereich, häufigste zuerst (für die Legende)
   legend(view, width, height, max = 14) {
     if (this.seed === null) return []
-    const lod = lodForScale(view.scale), size = tileSize(lod)
+    const lod = lodForScale(view.scale), size = this.tileSize(lod)
     const x1 = view.cx - width / 2 / view.scale, x2 = view.cx + width / 2 / view.scale
     const z1 = view.cz - height / 2 / view.scale, z2 = view.cz + height / 2 / view.scale
     const counts = new Map()

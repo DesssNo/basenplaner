@@ -38,7 +38,24 @@ public final class BiomeMapper {
     public static final int MAX_SAMPLES = 128 * 128;
     private static final Map<String, JsonObject> biomeInfo = new ConcurrentHashMap<>();
 
+    /** Fertige Biom-Kacheln (nur Biome, ohne echte Oberfläche), die zuletzt benutzten zuerst. */
+    private static final int CACHE_SIZE = 800;
+    private static final Map<String, JsonObject> cache = new LinkedHashMap<>(256, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, JsonObject> eldest) {
+            return size() > CACHE_SIZE;
+        }
+    };
+
     private BiomeMapper() {
+    }
+
+    public static synchronized JsonObject cached(String key) {
+        return cache.get(key);
+    }
+
+    public static synchronized void remember(String key, JsonObject tile) {
+        cache.put(key, tile);
     }
 
     /** Was nur auf dem Server-Thread gelesen werden darf: echte Höhen und Farben aus geladenen Chunks. */

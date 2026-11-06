@@ -206,6 +206,7 @@ Aktiv, wenn `/api/hello` antwortet:
 Gesammelt beim Umsetzen und Testen; kommt nach Etappe 4 bzw. nach Wunsch.
 
 - **Mod-Blöcke beim Drehen/Spiegeln mitdrehen** (z. B. Create): Klappt bisher nur für Vanilla-Blöcke. Ursache: Die Palette enthält Mod-Blöcke ohne Zustand (`create:…` statt `create:…[facing=north]`), und `src/blockstate.js` kennt die Standardrichtung nur für Vanilla-Blöcke (Tabelle `DEFAULTS`). Lösung: Standardzustände aus `/api/blocks` mitliefern (`defaultBlockState()`) und beim Drehen verwenden; Mod-eigene Eigenschaften mit Richtungswerten (`north`/`east`/…) dabei wie `facing` behandeln.
+- **Mod-Blöcke in der Palette (optional):** War in 0.4.0 drin (`/api/blocks`, Gruppen pro Mod), in ATM10 aber zu langsam beim Öffnen und ruckelig. Seit 0.4.1 zeigt die Palette nur Minecraft-Blöcke; Endpunkt und `registerGameBlocks` in `src/blocks.js` sind noch da. Denkbar: per Schalter oder Suche erst bei Bedarf laden.
 - **Echte Oberfläche bei starkem Zoom feiner:** Die Karte zeigt die Oberfläche in Zellen von 4 × 4 Blöcken; nah herangezoomt könnte sie blockgenau sein (eigene Kachelstufe mit Schritt 1).
 - **Oberfläche auch für gespeicherte, nicht geladene Chunks:** Bisher nur geladene Chunks; der Rest ist geschätzt.
 

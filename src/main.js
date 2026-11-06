@@ -1,4 +1,4 @@
-import { baseId, blockInfo, normalizeBlockId, paletteGroups, registerGameBlocks } from './blocks.js'
+import { baseId, blockInfo, normalizeBlockId, paletteGroups } from './blocks.js'
 import { transformState } from './blockstate.js'
 import { Bridge } from './bridge.js'
 import { download, exportLitematic, exportSponge } from './export.js'
@@ -100,17 +100,9 @@ class App {
   // Modpack-Anbindung: Blöcke, Hotbar und Karte aus dem Spiel
   async loadGameData() {
     this.useWorldMap()
-    try {
-      const { blocks } = await this.bridge.get('/api/blocks')
-      registerGameBlocks(blocks)
-      this.colors.clear()
-      this.chunkCache.clear()
-      this.buildPalette($('#block-search').value)
-      const mods = new Set(blocks.map(b => b.mod)).size - 1
-      if (mods > 0) this.toast(`${blocks.length.toLocaleString('de-DE')} Blöcke aus dem Spiel geladen, davon aus ${mods} Mod(s).`, 4000)
-    } catch (e) {
-      console.warn('Blöcke aus dem Spiel:', e.message)
-    }
+    // Die Palette bleibt bei den Minecraft-Blöcken: der komplette Block-Katalog eines großen Modpacks
+    // (ATM10: zehntausende Blöcke) macht das Öffnen langsam. Mod-Blöcke gehen weiter über die Pipette,
+    // „Bestand übernehmen“, die Hotbar oder eine eigene ID. (/api/blocks + registerGameBlocks bleiben für später.)
     try {
       const { slots, selected } = await this.bridge.get('/api/player/hotbar')
       // Die Spieler-Hotbar wird zur Editor-Hotbar (leere Plätze behalten ihren Block)

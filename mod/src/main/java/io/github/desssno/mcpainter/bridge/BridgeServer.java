@@ -56,6 +56,8 @@ public final class BridgeServer {
         server.setExecutor(Executors.newFixedThreadPool(4, r -> {
             Thread t = new Thread(r, "MCPainter-Bridge");
             t.setDaemon(true);
+            // Kartenberechnung soll dem Spiel keine Rechenzeit wegnehmen
+            t.setPriority(Thread.MIN_PRIORITY);
             return t;
         }));
         server.createContext("/api/", this::handleApi);

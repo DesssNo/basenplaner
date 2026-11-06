@@ -246,8 +246,17 @@ public final class Api {
             ServerLevel level = p.serverLevel();
             return new Object[]{level, surface ? BiomeMapper.surface(level, ax, az, step, nx, nz) : null};
         });
+        ServerLevel level = (ServerLevel) ctx[0];
+        if (surface) return BiomeMapper.map(level, ax, az, step, nx, nz, (BiomeMapper.Surface) ctx[1]);
+        // Biome ändern sich nie: fertige Kacheln merken, dann ist die Karte beim nächsten Öffnen sofort da
+        String key = level.getServer().getWorldData().getLevelName() + "|" + level.getSeed() + "|" + level.dimension().location()
+                + "|" + ax + "," + az + "," + step + "," + nx + "," + nz;
+        JsonObject cached = BiomeMapper.cached(key);
+        if (cached != null) return cached;
         // Biome und Höhenschätzung außerhalb des Server-Threads, damit das Spiel flüssig bleibt
-        return BiomeMapper.map((ServerLevel) ctx[0], ax, az, step, nx, nz, (BiomeMapper.Surface) ctx[1]);
+        JsonObject result = BiomeMapper.map(level, ax, az, step, nx, nz, null);
+        BiomeMapper.remember(key, result);
+        return result;
     }
 
     /** Block-IDs der Spieler-Hotbar (null für leere Plätze und Gegenstände, die keine Blöcke sind). */
