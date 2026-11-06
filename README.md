@@ -53,13 +53,15 @@ npm run build
 - `tools/test-import.mjs`: Import-Tests (Round-Trip, Sponge v3, Strukturdateien, Litematic mit mehreren Regionen).
 
 ## Mod installieren (MCPainter, in Arbeit)
-Der Mod liegt in [`mod/`](mod) (NeoForge 1.21.1). Stand: Etappe 2, der Basenplaner läuft im Spiel und baut direkt in der Welt. Modpack-Biome und -Blöcke folgen in Etappe 3.
+Der Mod liegt in [`mod/`](mod) (NeoForge 1.21.1). Stand: Etappe 3, der Basenplaner läuft im Spiel, kennt Biome und Blöcke des Modpacks und baut direkt in der Welt.
 1. Die Jar bauen (`npm run build`, dann `cd mod` und `gradlew build` → `mod/build/libs/mcpainter-*.jar`) oder als Artefakt aus dem Workflow „Mod bauen“ laden.
 2. Die Jar und [MCEF](https://www.curseforge.com/minecraft/mc-mods/mcef/files) `2.1.6-1.21.1` für NeoForge in den `mods/`-Ordner der Instanz legen.
 3. Beim ersten Start lädt MCEF Chromium herunter (ca. 100 MB).
 4. In einer Welt: Esc → Button „MCPainter“ oben links. Eine Taste ist standardmäßig nicht belegt, man kann sie unter Optionen → Steuerung festlegen.
 
 **Im Spiel:** Der Editor startet auf deiner Position (gelber Pfeil „Du“) und auf deiner Fußhöhe. Export, PNG, Seed und `/tp`-Kopieren gibt es dort nicht; „In Minecraft bauen“ ersetzt den Export. Der Plan wird pro Welt im Weltordner gespeichert (`data/mcpainter/plan.json`). Esc schließt erst offene Dialoge bzw. die Auswahl, dann den Editor; zweimal schnell Esc schließt ihn immer. `Strg` + `+`/`-`/`0` zoomt die Oberfläche.
+
+**Modpack:** Die Palette enthält alle Blöcke des Modpacks (zugeklappte Gruppen pro Mod, Suche über Name und ID), deine Hotbar wird zur Editor-Hotbar. Die Karte kommt aus dem echten Weltgenerator, auch mit Mod-Biomen und für Gebiete, in denen du noch nie warst; unter „Welt & Seed“ schaltest du zwischen „Biome“ und „Echte Oberfläche“ um, darunter steht die Biom-Legende. Das Teleport-Werkzeug (P) teleportiert direkt, „Bestand übernehmen…“ beim Auswahl-Werkzeug holt einen Bereich der echten Welt in den Plan.
 
 **Aus dem Browser bauen:** Im Spiel `/mcpainter code` eingeben und den Code anklicken (kopiert ihn). Im Basenplaner oben auf „Minecraft koppeln“ klicken und den Code einfügen. Danach erscheint oben der Button „In Minecraft bauen“. Rückgängig geht im Bau-Dialog oder im Spiel mit `/mcpainter undo`; die letzten 5 Bauten lassen sich auch nach einem Neustart noch zurücknehmen.
 

@@ -10,6 +10,13 @@ import io.github.desssno.mcpainter.build.BuildManager;
 import io.github.desssno.mcpainter.build.Job;
 import io.github.desssno.mcpainter.build.SpongeSchematic;
 import io.github.desssno.mcpainter.build.UndoStore;
+import io.github.desssno.mcpainter.world.BiomeMapper;
+import io.github.desssno.mcpainter.world.BlockCatalog;
+import com.google.gson.JsonNull;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.SharedConstants;
 import net.minecraft.commands.arguments.blocks.BlockStateParser;
 import net.minecraft.core.BlockPos;
@@ -80,6 +87,11 @@ public final class Api {
             uiClose.run();
             return new JsonObject();
         }
+        if (get && path.equals("/api/blocks")) return BlockCatalog.get();
+        if (get && path.equals("/api/world/biomes")) return worldMap(r, false);
+        if (get && path.equals("/api/world/surface")) return worldMap(r, true);
+        if (get && path.equals("/api/player/hotbar")) return hotbar();
+        if (post && path.equals("/api/teleport")) return teleport(r);
         if (get && path.equals("/api/plan")) return PlanStore.load(onServerPath());
         if (post && path.equals("/api/plan")) return PlanStore.save(onServerPath(), r.body());
         if (get && path.equals("/api/hello")) return hello();
@@ -217,6 +229,58 @@ public final class Api {
         });
     }
 
+    /**
+     * Karte aus dem echten Weltgenerator der Dimension des Spielers: {@code x1,z1,x2,z2,step}.
+     * Proben in der Mitte jeder Zelle; Antwort siehe {@link BiomeMapper#map}.
+     */
+    private static JsonObject worldMap(Request r, boolean surface) {
+        int x1 = r.intParam("x1"), z1 = r.intParam("z1"), x2 = r.intParam("x2"), z2 = r.intParam("z2");
+        int step = Math.max(1, r.intParam("step"));
+        int nx = (Math.abs(x2 - x1) + 1) / step, nz = (Math.abs(z2 - z1) + 1) / step;
+        if (nx < 1 || nz < 1) throw new ApiException(400, "Bereich kleiner als ein Schritt");
+        if ((long) nx * nz > BiomeMapper.MAX_SAMPLES) throw new ApiException(400, "Zu viele Proben (höchstens " + BiomeMapper.MAX_SAMPLES + ")");
+        int ax = Math.min(x1, x2), az = Math.min(z1, z2);
+        Object[] ctx = onServerGet(s -> {
+            ServerPlayer p = player(s);
+            if (p == null) throw new ApiException(409, "Kein Spieler in der Welt");
+            ServerLevel level = p.serverLevel();
+            return new Object[]{level, surface ? BiomeMapper.surface(level, ax, az, step, nx, nz) : null};
+        });
+        // Biome und Höhenschätzung außerhalb des Server-Threads, damit das Spiel flüssig bleibt
+        return BiomeMapper.map((ServerLevel) ctx[0], ax, az, step, nx, nz, (BiomeMapper.Surface) ctx[1]);
+    }
+
+    /** Block-IDs der Spieler-Hotbar (null für leere Plätze und Gegenstände, die keine Blöcke sind). */
+    private static JsonObject hotbar() {
+        return onServer(s -> {
+            ServerPlayer p = player(s);
+            if (p == null) throw new ApiException(409, "Kein Spieler in der Welt");
+            JsonArray slots = new JsonArray();
+            for (int i = 0; i < 9; i++) {
+                ItemStack stack = p.getInventory().getItem(i);
+                if (stack.getItem() instanceof BlockItem bi) slots.add(BuiltInRegistries.BLOCK.getKey(bi.getBlock()).toString());
+                else slots.add(JsonNull.INSTANCE);
+            }
+            JsonObject o = new JsonObject();
+            o.add("slots", slots);
+            o.addProperty("selected", p.getInventory().selected);
+            return o;
+        });
+    }
+
+    /** Teleportiert den Spieler (Query {@code x}, {@code y}, {@code z}, Blockmitte wird ergänzt). */
+    private static JsonObject teleport(Request r) {
+        int x = r.intParam("x"), y = r.intParam("y"), z = r.intParam("z");
+        return onServer(s -> {
+            ServerPlayer p = player(s);
+            if (!canBuild(s, p)) throw new ApiException(403, "Teleportieren dürfen nur der Welt-Besitzer oder OPs (Level 2).");
+            p.teleportTo(p.serverLevel(), x + 0.5, y, z + 0.5, p.getYRot(), p.getXRot());
+            JsonObject o = new JsonObject();
+            o.addProperty("ok", true);
+            return o;
+        });
+    }
+
     // ---------- Hilfen ----------
 
     private static Job job(String id) {
@@ -244,8 +308,12 @@ public final class Api {
         return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT);
     }
 
-    /** Führt {@code fn} auf dem Server-Thread aus und wartet auf das Ergebnis. */
     private static JsonObject onServer(Function<MinecraftServer, JsonObject> fn) {
+        return onServerGet(fn);
+    }
+
+    /** Führt {@code fn} auf dem Server-Thread aus und wartet auf das Ergebnis. */
+    private static <T> T onServerGet(Function<MinecraftServer, T> fn) {
         MinecraftServer server = serverSupplier.get();
         if (server == null) throw new ApiException(409, "Keine Welt geöffnet");
         try {

@@ -1,5 +1,4 @@
-import { BIOMES } from './biomes.js'
-import { BLOCK_GROUPS, baseId, blockInfo, normalizeBlockId } from './blocks.js'
+import { baseId, blockInfo, normalizeBlockId, paletteGroups, registerGameBlocks } from './blocks.js'
 import { transformState } from './blockstate.js'
 import { Bridge } from './bridge.js'
 import { download, exportLitematic, exportSponge } from './export.js'
@@ -93,8 +92,102 @@ class App {
       this.redraw()
     }
     if (!hello?.inWorld) this.toast('Keine Welt geöffnet – Bauen geht erst in einer Welt.', 5000)
+    else this.loadGameData()
     this.bridge.post('/api/ui/ready').catch(() => {})
     if (new URLSearchParams(location.search).has('autotest')) this.selftest()
+  }
+
+  // Modpack-Anbindung: Blöcke, Hotbar und Karte aus dem Spiel
+  async loadGameData() {
+    this.useWorldMap()
+    try {
+      const { blocks } = await this.bridge.get('/api/blocks')
+      registerGameBlocks(blocks)
+      this.colors.clear()
+      this.chunkCache.clear()
+      this.buildPalette($('#block-search').value)
+      const mods = new Set(blocks.map(b => b.mod)).size - 1
+      if (mods > 0) this.toast(`${blocks.length.toLocaleString('de-DE')} Blöcke aus dem Spiel geladen, davon aus ${mods} Mod(s).`, 4000)
+    } catch (e) {
+      console.warn('Blöcke aus dem Spiel:', e.message)
+    }
+    try {
+      const { slots, selected } = await this.bridge.get('/api/player/hotbar')
+      // Die Spieler-Hotbar wird zur Editor-Hotbar (leere Plätze behalten ihren Block)
+      slots.forEach((id, i) => { if (id) this.hotbar[i] = id })
+      if (slots.some(Boolean)) { this.slot = selected; this.refreshBlock() }
+    } catch (e) {
+      console.warn('Hotbar aus dem Spiel:', e.message)
+    }
+    this.redraw()
+  }
+
+  // Karte aus der Spielwelt: Biome oder echte Oberfläche (Schalter in der Seitenleiste)
+  useWorldMap() {
+    const mode = this.settings.mapMode === 'surface' ? 'surface' : 'biomes'
+    const sel = $('#map-mode')
+    if (sel) sel.value = mode
+    this.seedValue = null
+    this.map.setWorld({
+      fetch: (x1, z1, x2, z2, step, m) => this.bridge.get(`/api/world/${m}?x1=${x1}&z1=${z1}&x2=${x2}&z2=${z2}&step=${step}`),
+    }, mode)
+    this.redraw()
+  }
+
+  refreshLegend() {
+    const ul = $('#biome-legend')
+    if (!ul || !this.inGame) return
+    const list = this.map.legend(this.view, this.W, this.H)
+    const html = list.map(p => `<li><span class="sw" style="background:${p.css}"></span>${esc(p.name)}</li>`).join('')
+    if (html !== this.legendHtml) ul.innerHTML = this.legendHtml = html || '<li class="hint">Karte wird geladen …</li>'
+  }
+
+  async teleportTo(c) {
+    const y = this.currentY + (this.project.get(this.currentY, c.x, c.z) ? 1 : 0)
+    try {
+      await this.bridge.post(`/api/teleport?x=${c.x}&y=${y}&z=${c.z}`)
+      const hello = await this.bridge.get('/api/hello')
+      if (hello.player) this.player = hello.player
+      this.toast(`Teleportiert nach X ${c.x}, Y ${y}, Z ${c.z}.`)
+      this.redraw()
+    } catch (e) {
+      this.toast(e.message, 5000)
+    }
+  }
+
+  // Bestand übernehmen: einen Bereich der echten Welt als verschiebbare Auswahl in den Plan holen
+  async captureWorld() {
+    const s = this.selection
+    if (!s) return this.toast('Erst mit dem Auswahl-Werkzeug (M) einen Bereich markieren.', 4000)
+    const w = s.x2 - s.x1 + 1, l = s.z2 - s.z1 + 1
+    const r = await this.dialog('Bestand übernehmen', `
+      <p class="hint">Bereich ${w} × ${l} Blöcke ab X ${s.x1}, Z ${s.z1}. Die Blöcke aus der Welt kommen als verschiebbare Auswahl in den Plan (Luft wird weggelassen).</p>
+      <div class="row"><label class="field"><span>Von Y</span><input name="y1" type="number" value="${this.currentY}"></label>
+      <label class="field"><span>Bis Y</span><input name="y2" type="number" value="${this.currentY + 9}"></label></div>`,
+    [['cancel', 'Abbrechen'], ['ok', 'Übernehmen', true]])
+    if (r !== 'ok') return
+    const form = $('#dialog form')
+    const y1 = Math.min(+form.y1.value, +form.y2.value), y2 = Math.max(+form.y1.value, +form.y2.value)
+    if (w * l * (y2 - y1 + 1) > 1_000_000) return this.toast('Zu groß: höchstens 1 Million Blöcke auf einmal.', 5000)
+    let res
+    try {
+      res = await this.bridge.get(`/api/world/blocks?x1=${s.x1}&y1=${y1}&z1=${s.z1}&x2=${s.x2}&y2=${y2}&z2=${s.z2}`)
+    } catch (e) {
+      return this.toast(e.message, 5000)
+    }
+    const [W, H, L] = res.size
+    const ids = res.palette.map(id => /^minecraft:(cave_|void_)?air$/.test(id) ? 0 : this.project.blockIndex(id))
+    const cells = []
+    for (let y = 0; y < H; y++) for (let z = 0; z < L; z++) for (let x = 0; x < W; x++) {
+      const v = ids[res.data[(y * L + z) * W + x]]
+      if (v) cells.push([x, z, y1 + y, v])
+    }
+    if (!cells.length) return this.toast('In diesem Bereich ist nur Luft.')
+    this.selection = null
+    this.setY(y1)
+    this.floating = { x: s.x1, z: s.z1, w: W, h: L, cells, baseY: y1, allLayers: true }
+    this.redraw()
+    this.toast(`${cells.length.toLocaleString('de-DE')} Blöcke übernommen – verschieben, mit Q drehen, Enter setzt sie ab.`, 5000)
   }
 
   // Für den Entwicklungs-Autotest des Mods: Zustand und jede Planänderung melden, F9 öffnet einen Dialog (Esc-Test)
@@ -415,6 +508,10 @@ class App {
     this.drawMeasure(ctx)
     this.drawTpTarget(ctx)
     this.drawPlayer(ctx)
+    // Legende höchstens zweimal pro Sekunde neu berechnen
+    if (this.inGame && !this.legendTimer) {
+      this.legendTimer = setTimeout(() => { this.legendTimer = 0; this.refreshLegend() }, 500)
+    }
     const info = $('#optionsbar .info')
     if (info) info.textContent = this.tool.info?.(this) ?? ''
   }
@@ -933,7 +1030,7 @@ class App {
 
   // Im Spiel ohne Teleport-Befehl-Werkzeug: /tp kopieren ist dort sinnlos (direkter Teleport folgt mit Etappe 3)
   tools() {
-    return this.inGame ? TOOLS.filter(t => t.id !== 'teleport') : TOOLS
+    return TOOLS
   }
 
   buildToolbar() {
@@ -973,10 +1070,11 @@ class App {
         <button data-cmd="paste" title="Strg+V">Einfügen</button><button data-cmd="delete" title="Entf">Löschen</button>
         <button data-cmd="rotate" title="Drehen (Q)">⟳ 90°</button><button data-cmd="flipX" title="Spiegeln links/rechts">⇆</button>
         <button data-cmd="flipZ" title="Spiegeln oben/unten">⇅</button><button data-cmd="deselect" title="Esc">Fertig</button>`)
+      if (this.inGame) parts.push('<button data-cmd="capture" title="Blöcke aus der echten Welt im markierten Bereich in den Plan holen">Bestand übernehmen…</button>')
     }
     if (t === 'picker') parts.push('<span class="label">Klick auf einen Block übernimmt ihn in die Hotbar</span>')
     if (t === 'zone') parts.push('<span class="label">Rechteck aufziehen und benennen</span>')
-    if (t === 'teleport') parts.push('<span class="label">Klick auf einen Block → Teleport-Befehl für Minecraft kopieren</span>')
+    if (t === 'teleport') parts.push(this.inGame ? '<span class="label">Klick auf einen Block → du wirst direkt dorthin teleportiert</span>' : '<span class="label">Klick auf einen Block → Teleport-Befehl für Minecraft kopieren</span>')
     if (t === 'hand') parts.push('<span class="label">Tipp: Leertaste oder mittlere Maustaste verschiebt immer, Mausrad zoomt</span>')
     if (!['hand', 'picker', 'measure', 'zone', 'teleport'].includes(t)) {
       parts.push(`<span class="sep"></span><span class="label">Symmetrie</span>
@@ -1006,21 +1104,22 @@ class App {
       if (cmd === 'delete') this.deleteSelection()
       if (cmd === 'rotate' || cmd === 'flipX' || cmd === 'flipZ') this.transformFloating(cmd)
       if (cmd === 'deselect') { this.dropFloating(); this.selection = null; this.redraw() }
+      if (cmd === 'capture') this.captureWorld()
     }
   }
 
   buildPalette(filter = '') {
     const f = filter.trim().toLowerCase()
     const html = []
-    for (const [group, list] of BLOCK_GROUPS) {
+    for (const [group, list, mod] of paletteGroups()) {
       const items = list.filter(([id, name]) => !f || id.includes(f) || name.toLowerCase().includes(f))
       if (!items.length) continue
-      html.push(`<h4>${group}</h4><div class="grid">`)
-      for (const [id, name, color, alpha = 1] of items) {
-        const full = 'minecraft:' + id
+      // Gruppen aus dem Modpack sind zugeklappt (sonst Tausende Felder), bei einer Suche offen
+      html.push(mod ? `<details class="pgroup" ${f ? 'open' : ''}><summary>${esc(group)} <span class="hint">(${items.length})</span></summary><div class="grid">` : `<h4>${esc(group)}</h4><div class="grid">`)
+      for (const [full, name, color, alpha = 1] of items) {
         html.push(`<button data-block="${full}" title="${esc(name)}\n${full}" class="${alpha < 1 ? 'checker' : ''} ${full === this.block ? 'on' : ''}" style="${alpha < 1 ? `box-shadow: inset 0 0 0 40px ${color}${Math.round(alpha * 255).toString(16).padStart(2, '0')}` : `background:${color}`}"></button>`)
       }
-      html.push('</div>')
+      html.push(mod ? '</div></details>' : '</div>')
     }
     $('#palette').innerHTML = html.join('') || '<p class="hint">Nichts gefunden. Du kannst die ID unten auch direkt eingeben.</p>'
   }
@@ -1078,6 +1177,8 @@ class App {
   }
 
   applySeed(seed, announce = true) {
+    // Im Spiel kommt die Karte aus der echten Welt, nicht aus einem Seed
+    if (this.inGame) return this.useWorldMap()
     seed = String(seed ?? '').trim()
     this.project.seed = seed
     this.seedValue = seed ? parseSeed(seed) : null
@@ -1122,6 +1223,7 @@ class App {
     $('#block-search').oninput = e => this.buildPalette(e.target.value)
     $('#custom-block').onkeydown = e => { if (e.key === 'Enter') this.action('custom-block') }
     $('#seed').onkeydown = e => { if (e.key === 'Enter') this.action('seed') }
+    $('#map-mode').onchange = e => { this.settings.mapMode = e.target.value; this.legendHtml = null; this.useWorldMap(); this.scheduleSave() }
     $('#project-name').onchange = e => { this.project.name = e.target.value.trim() || 'Basenplan'; this.scheduleSave() }
     const bindSetting = (id, key, fn) => {
       $(id).oninput = e => {
@@ -1436,6 +1538,7 @@ class App {
   }
 
   showTpMenu(c, e) {
+    if (this.inGame) return this.teleportTo(c)
     this.closeTpMenu()
     this.tpCell = c
     const menu = document.createElement('div')
@@ -1539,7 +1642,7 @@ class App {
       `Nether <b>${Math.floor(h.x / 8)}, ${Math.floor(h.z / 8)}</b>`,
     ]
     const m = this.map.seed !== null ? this.map.sample(h.x, h.z) : null
-    if (m) parts.push(`Biom <b>${BIOMES[m.biome][1]}</b>`, `Gelände <b>~Y ${Math.round(m.height)}</b>`)
+    if (m) parts.push(`Biom <b>${esc(this.map.biomeName(m.biome))}</b>`, `${this.map.mode === 'surface' && m.exact ? 'Oberfläche' : 'Gelände'} <b>~Y ${Math.round(m.height)}</b>`)
     if (this.seedValue !== null && this.settings.slime) parts.push(this.slime.get(this.seedValue, h.x >> 4, h.z >> 4) ? '<b style="color:#8f8">Slime-Chunk</b>' : 'kein Slime-Chunk')
     const v = this.project.get(this.currentY, h.x, h.z)
     if (v) parts.push(`Block <b>${esc(blockInfo(this.project.palette[v]).name)}</b>`)

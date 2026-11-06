@@ -109,6 +109,35 @@ check(diff === 0, `nach allen Rückgängig ist der Bereich wie vorher (${diff} A
 const none = await fetch(base + '/api/undo', { method: 'POST', headers: { 'X-MCPainter-Token': token } })
 check(none.status === 404, `nichts mehr rückgängig zu machen: ${none.status}`)
 
+// --- Etappe 3: Modpack-Anbindung ---
+const catalog = (await api('GET', '/api/blocks')).blocks
+const mods = new Set(catalog.map(b => b.mod))
+check(catalog.length > 1000 && catalog.some(b => b.id === 'minecraft:stone'), `Block-Katalog: ${catalog.length} Blöcke aus ${[...mods].join(', ')}`)
+const stairs = catalog.find(b => b.id === 'minecraft:oak_stairs')
+check(stairs?.states?.facing?.includes('east') && stairs.color && stairs.full === false, 'Treppe mit Zuständen, Farbe und Form')
+const modBlock = catalog.find(b => !b.id.startsWith('minecraft:') && b.item && b.full)
+if (modBlock) {
+  const MX = X + 10
+  const done3 = await waitJob(await api('POST', '/api/build?overwrite=all', plan([[MX, Y, Z, modBlock.id]])))
+  const got = (await region(MX, Y, Z, MX, Y, Z)).at(MX, Y, Z)
+  check(done3.placed === 1 && got.startsWith(modBlock.id), `Mod-Block gebaut: ${got}`)
+  await waitJob(await api('POST', '/api/undo'))
+} else console.log('     (kein Mod mit Blöcken geladen, Mod-Block-Test übersprungen)')
+
+const bio = await api('GET', `/api/world/biomes?x1=${X - 512}&z1=${Z - 512}&x2=${X + 511}&z2=${Z + 511}&step=16`)
+check(bio.biomes.length === 64 * 64 && bio.palette.length > 0 && bio.biomes.every(b => b < bio.palette.length), `Biomkarte: ${bio.palette.length} Biome`)
+check(!bio.palette.some(p => /cave|deep_dark/.test(p.id)), `keine Höhlenbiome an der Oberfläche: ${bio.palette.filter(p => /cave|deep_dark/.test(p.id)).map(p => p.id)}`)
+const modBiomes = bio.palette.filter(p => !p.id.startsWith('minecraft:'))
+console.log(`     Mod-Biome in der Nähe: ${modBiomes.map(p => p.name + ' (' + p.mod + ')').join(', ') || 'keine'}`)
+const surf = await api('GET', `/api/world/surface?x1=${X - 32}&z1=${Z - 32}&x2=${X + 31}&z2=${Z + 31}&step=1`)
+check(surf.colors.length === 64 * 64 && surf.colors.filter(c => c >= 0).length > 3000, `echte Oberfläche um den Spieler: ${surf.colors.filter(c => c >= 0).length} von 4096 mit Farbe`)
+
+const hb = await api('GET', '/api/player/hotbar')
+check(Array.isArray(hb.slots) && hb.slots.length === 9, `Hotbar: ${hb.slots.map(s => s ?? '–').join(', ')}`)
+await api('POST', `/api/teleport?x=${X + 3}&y=${Y + 5}&z=${Z + 3}`)
+const after3 = (await api('GET', '/api/hello')).player
+check(Math.floor(after3.x) === X + 3 && Math.floor(after3.z) === Z + 3, `Teleport nach ${X + 3} ${Y + 5} ${Z + 3}: Spieler bei ${Math.floor(after3.x)} ${Math.floor(after3.y)} ${Math.floor(after3.z)}`)
+
 // --- Plan pro Welt (Editor im Spiel speichert im Weltordner) ---
 const planData = { project: { format: 'basenplaner', version: 1, name: 'Testplan äöü', palette: [], layers: [] }, currentY: 70 }
 await api('POST', '/api/plan', JSON.stringify(planData))

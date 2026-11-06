@@ -1,7 +1,6 @@
 // 3D preview of the plan (three.js). Builds one face-culled mesh for opaque blocks and one for transparent ones.
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { BIOME_RGB } from './biomes.js'
 import { blockInfo, blockShape } from './blocks.js'
 
 const MAX_VOLUME = 60_000_000
@@ -236,7 +235,7 @@ export class View3D {
       for (let i = 0; i < cw; i++) {
         const x = b.x1 - pad + i * step, z = b.z1 - pad + j * step
         const s = map.seed !== null ? map.sample(x, z) : null
-        const [r, g, bl] = s ? BIOME_RGB[s.biome] : ((Math.floor(x / 16) + Math.floor(z / 16)) & 1 ? [88, 120, 70] : [80, 112, 64])
+        const [r, g, bl] = s ? map.biomeRgb(s.biome) : ((Math.floor(x / 16) + Math.floor(z / 16)) & 1 ? [88, 120, 70] : [80, 112, 64])
         const k = (j * cw + i) * 4
         img.data[k] = r; img.data[k + 1] = g; img.data[k + 2] = bl; img.data[k + 3] = 255
       }

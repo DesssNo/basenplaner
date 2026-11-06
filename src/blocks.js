@@ -94,6 +94,45 @@ for (const [group, list] of BLOCK_GROUPS) {
   for (const [id, name, color, alpha = 1] of list) BLOCKS.set('minecraft:' + id, { id: 'minecraft:' + id, name, color, alpha, group })
 }
 
+// Blöcke aus dem Spiel (MCPainter-Mod, /api/blocks): Modpack-Blöcke mit Namen, Kartenfarbe und Form.
+// Die feste Liste oben bleibt für die Browser-Version und als sortierte Vanilla-Gruppen zuerst.
+const GAME_SHAPES = new Map()
+let gameGroups = []
+
+export function registerGameBlocks(list) {
+  const groups = new Map()
+  for (const b of list) {
+    if (b.box) GAME_SHAPES.set(b.id, { box: b.box, full: !!b.full })
+    if (!b.item) continue // nur Blöcke, die man auch als Gegenstand hat
+    let info = BLOCKS.get(b.id)
+    if (!info) {
+      const color = b.color ?? hashColor(b.id)
+      info = { id: b.id, name: b.name, color, alpha: b.transparent && /glass|ice|pane|leaves/.test(b.id) ? 0.55 : 1, group: b.mod }
+      BLOCKS.set(b.id, info)
+      const g = b.mod === 'Minecraft' ? 'Minecraft (weitere)' : b.mod
+      if (!groups.has(g)) groups.set(g, [])
+      groups.get(g).push([b.id, info.name, info.color, info.alpha])
+    }
+  }
+  // Vanilla-Rest zuerst, dann Mods alphabetisch
+  gameGroups = [...groups].sort(([a], [b]) => (a.startsWith('Minecraft') ? -1 : b.startsWith('Minecraft') ? 1 : a.localeCompare(b, 'de')))
+  infoCache.clear()
+}
+
+// Gruppen für die Palette: [Gruppe, [[volle ID, Name, Farbe, Deckkraft]], Mod-Gruppe?]
+export function paletteGroups() {
+  return [
+    ...BLOCK_GROUPS.map(([g, list]) => [g, list.map(([id, name, color, alpha = 1]) => ['minecraft:' + id, name, color, alpha]), false]),
+    ...gameGroups.map(([g, list]) => [g, list, true]),
+  ]
+}
+
+function hashColor(id) {
+  let h = 0
+  for (const c of id) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0
+  return `hsl(${(h >>> 0) % 360} 45% 50%)`
+}
+
 // Normalise user input like "oak_stairs[facing=east]" -> "minecraft:oak_stairs[facing=east]"
 export function normalizeBlockId(input) {
   const s = String(input).trim().toLowerCase().replace(/\s+/g, '')
@@ -148,9 +187,7 @@ export function blockInfo(id) {
       info = { id, name: id.replace('minecraft:', ''), color: mat.color, alpha: mat.alpha, group: 'Eigene' }
     } else {
       // Unknown block: stable color from its name
-      let h = 0
-      for (const c of base) h = (Math.imul(h, 31) + c.charCodeAt(0)) | 0
-      info = { id, name: id.replace('minecraft:', ''), color: `hsl(${(h >>> 0) % 360} 45% 50%)`, alpha: 1, group: 'Eigene' }
+      info = { id, name: id.replace('minecraft:', ''), color: hashColor(base), alpha: 1, group: 'Eigene' }
     }
   }
   infoCache.set(id, info)
@@ -159,6 +196,9 @@ export function blockInfo(id) {
 
 // 3D box of a block in unit coordinates [x0, y0, z0, x1, y1, z1]; full = hides neighbour faces
 export function blockShape(id) {
+  // Mod-Blöcke: Form aus dem Spiel (Kollisionsbox) statt Namensregeln
+  const game = GAME_SHAPES.get(baseId(id))
+  if (game && !baseId(id).startsWith('minecraft:')) return { box: game.box, full: game.full }
   const base = baseId(id).replace(/^minecraft:/, '')
   const props = id.includes('[') ? id.slice(id.indexOf('[') + 1, -1) : ''
   if (base.endsWith('_slab')) {

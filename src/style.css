@@ -140,3 +140,13 @@ dialog label.check { display: flex; gap: 6px; align-items: center; margin: 8px 0
 
 /* Minecraft-Modus (Editor im Spiel): Export, PNG, Seed und Koppeln gibt es dort nicht */
 body.mc [data-action=export], body.mc [data-action=png], body.mc #mc-pair, body.mc #seed-box { display: none !important; }
+
+/* Nur im Spiel: Kartenmodus und Biom-Legende */
+.mc-only { display: none; }
+body.mc .mc-only { display: block; }
+#map-mode { width: 100%; background: #14161a; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+#biome-legend { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+#biome-legend li { display: flex; align-items: center; gap: 6px; }
+#biome-legend .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; border: 1px solid #0006; }
+/* Blockgruppen aus dem Modpack (zugeklappt) */
+#palette details.pgroup summary { cursor: pointer; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 8px 0 4px; }

@@ -1,5 +1,11 @@
-// Biome map: tiles computed by a pool of web workers, drawn under the plan
-import { BIOME_RGB } from './biomes.js'
+// Biome map: tiles drawn under the plan. Two sources:
+// - seed: computed by a pool of web workers (vanilla generator via deepslate)
+// - world: fetched from the MCPainter bridge in the game (real generator incl. mod biomes, optional real surface)
+import { BIOMES } from './biomes.js'
+
+const hexRgb = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)]
+const VANILLA = new Map(BIOMES.map(([id, name, color]) => ['minecraft:' + id, { name, rgb: hexRgb(color) }]))
+const seedPalette = () => BIOMES.map(([id, name, color]) => ({ id: 'minecraft:' + id, name, rgb: hexRgb(color), css: color }))
 
 const SAMPLES = 64
 export const tileSize = lod => 256 * 4 ** lod
@@ -11,7 +17,11 @@ export function lodForScale(scale) {
 export class BiomeMap {
   constructor(workerSource, onUpdate) {
     this.onUpdate = onUpdate
-    this.seed = null
+    this.seed = null // cache key: the seed, or "@world:biomes" / "@world:surface"
+    this.world = null // { fetch(x1, z1, x2, z2, step, mode) }
+    this.palette = seedPalette()
+    this.paletteIndex = new Map(this.palette.map((p, i) => [p.id, i]))
+    this.inflight = 0
     this.relief = true
     this.tiles = new Map() // key -> tile
     this.pending = new Set()
@@ -31,13 +41,48 @@ export class BiomeMap {
     return this.pending.size + this.queue.length
   }
 
+  biomeName(i) { return this.palette[i]?.name ?? '?' }
+  biomeRgb(i) { return this.palette[i]?.rgb ?? [80, 80, 80] }
+
   setSeed(seed) {
+    this.world = null
+    this.palette = seedPalette()
+    this.paletteIndex = new Map(this.palette.map((p, i) => [p.id, i]))
     this.seed = seed
     this.tiles.clear()
     this.pending.clear()
     this.queue = []
     for (const w of this.workers) w.postMessage({ type: 'seed', seed })
     this.onUpdate()
+  }
+
+  // Karte aus der Spielwelt (Brücke): mode "biomes" oder "surface" (echte Oberfläche in geladenen Chunks)
+  setWorld(world, mode) {
+    this.world = world
+    this.palette = []
+    this.paletteIndex = new Map()
+    this.seed = '@world:' + mode
+    this.mode = mode
+    this.tiles.clear()
+    this.pending.clear()
+    this.queue = []
+    this.onUpdate()
+  }
+
+  // Biome eines Bridge-Tiles in die eigene Palette übernehmen (Vanilla-Biome behalten ihre bekannten Farben)
+  mergePalette(list) {
+    return list.map(p => {
+      let i = this.paletteIndex.get(p.id)
+      if (i === undefined) {
+        const v = VANILLA.get(p.id)
+        const rgb = v ? v.rgb : hexRgb(p.color)
+        const name = p.mod && p.mod !== 'Minecraft' ? `${p.name} (${p.mod})` : (v?.name ?? p.name)
+        i = this.palette.length
+        this.palette.push({ id: p.id, name, rgb, css: `rgb(${rgb.join(',')})` })
+        this.paletteIndex.set(p.id, i)
+      }
+      return i
+    })
   }
 
   setRelief(on) {
@@ -69,12 +114,34 @@ export class BiomeMap {
   }
 
   pump() {
+    if (this.world) return this.pumpWorld()
     for (const w of this.workers) {
       if (w.busy || !this.queue.length) continue
       const t = this.queue.shift()
       w.busy = true
       this.pending.add(t.key)
       w.postMessage({ type: 'tile', key: t.key, seed: this.seed, lod: t.lod, tx: t.tx, tz: t.tz })
+    }
+  }
+
+  pumpWorld() {
+    while (this.inflight < 3 && this.queue.length) {
+      const t = this.queue.shift()
+      const key = this.seed, size = tileSize(t.lod), x1 = t.tx * size, z1 = t.tz * size
+      this.inflight++
+      this.pending.add(t.key)
+      this.world.fetch(x1, z1, x1 + size - 1, z1 + size - 1, size / SAMPLES, this.mode).then(r => {
+        if (key !== this.seed) return
+        const map = this.mergePalette(r.palette)
+        const biomes = Uint16Array.from(r.biomes, b => map[b])
+        this.tiles.set(t.key, { lod: t.lod, tx: t.tx, tz: t.tz, biomes, heights: Float32Array.from(r.heights), colors: r.colors ? Int32Array.from(r.colors) : null, canvas: null })
+        if (this.tiles.size > 2500) this.tiles.delete(this.tiles.keys().next().value)
+        this.onUpdate()
+      }).catch(e => console.warn('Karte aus der Welt:', e.message)).finally(() => {
+        this.inflight--
+        this.pending.delete(t.key)
+        if (key === this.seed) this.pump()
+      })
     }
   }
 
@@ -101,7 +168,8 @@ export class BiomeMap {
     for (let j = 0; j < SAMPLES; j++) {
       for (let i = 0; i < SAMPLES; i++) {
         const k = j * SAMPLES + i
-        const [r, g, b] = BIOME_RGB[t.biomes[k]]
+        const c = t.colors?.[k] ?? -1
+        const [r, g, b] = c >= 0 ? [c >> 16 & 255, c >> 8 & 255, c & 255] : this.biomeRgb(t.biomes[k])
         let f = 1
         if (this.relief) {
           const gx = (h[j * SAMPLES + Math.min(SAMPLES - 1, i + 1)] - h[j * SAMPLES + Math.max(0, i - 1)]) / (2 * step)
@@ -155,5 +223,21 @@ export class BiomeMap {
       return { biome: t.biomes[j * SAMPLES + i], height: t.heights[j * SAMPLES + i], exact: lod === 0 }
     }
     return null
+  }
+
+  // Biome im sichtbaren Bereich, häufigste zuerst (für die Legende)
+  legend(view, width, height, max = 14) {
+    if (this.seed === null) return []
+    const lod = lodForScale(view.scale), size = tileSize(lod)
+    const x1 = view.cx - width / 2 / view.scale, x2 = view.cx + width / 2 / view.scale
+    const z1 = view.cz - height / 2 / view.scale, z2 = view.cz + height / 2 / view.scale
+    const counts = new Map()
+    for (let tz = Math.floor(z1 / size); tz <= Math.floor(z2 / size); tz++) {
+      for (let tx = Math.floor(x1 / size); tx <= Math.floor(x2 / size); tx++) {
+        const t = this.tiles.get(lod + ':' + tx + ':' + tz)
+        if (t) for (const b of t.biomes) counts.set(b, (counts.get(b) ?? 0) + 1)
+      }
+    }
+    return [...counts].sort((a, b) => b[1] - a[1]).slice(0, max).map(([i]) => this.palette[i]).filter(Boolean)
   }
 }
