@@ -193,8 +193,19 @@ Aktiv, wenn `/api/hello` antwortet:
 | Frage | Standard |
 |---|---|
 | Name | **MCPainter** (Mod-ID `mcpainter`) |
-| Taste | `B` |
+| Taste | **keine** (frei belegbar unter Steuerung; geöffnet wird über den Pausemenü-Button) |
 | Mehrspieler | erst mal nur Einzelspieler / LAN-Host |
 | Survival-Bauen | später (Etappe 4) |
 | Geisterblock-Vorschau | später (Etappe 4) |
 | Export im Spiel | **nein**, „Bauen“ ersetzt ihn |
+
+---
+
+## 12. Für später (Ideen und bekannte Lücken)
+
+Gesammelt beim Umsetzen und Testen; kommt nach Etappe 4 bzw. nach Wunsch.
+
+- **Mod-Blöcke beim Drehen/Spiegeln mitdrehen** (z. B. Create): Klappt bisher nur für Vanilla-Blöcke. Ursache: Die Palette enthält Mod-Blöcke ohne Zustand (`create:…` statt `create:…[facing=north]`), und `src/blockstate.js` kennt die Standardrichtung nur für Vanilla-Blöcke (Tabelle `DEFAULTS`). Lösung: Standardzustände aus `/api/blocks` mitliefern (`defaultBlockState()`) und beim Drehen verwenden; Mod-eigene Eigenschaften mit Richtungswerten (`north`/`east`/…) dabei wie `facing` behandeln.
+- **Echte Oberfläche bei starkem Zoom feiner:** Die Karte zeigt die Oberfläche in Zellen von 4 × 4 Blöcken; nah herangezoomt könnte sie blockgenau sein (eigene Kachelstufe mit Schritt 1).
+- **Oberfläche auch für gespeicherte, nicht geladene Chunks:** Bisher nur geladene Chunks; der Rest ist geschätzt.
+
