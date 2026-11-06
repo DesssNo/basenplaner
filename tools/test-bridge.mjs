@@ -106,8 +106,21 @@ const bigDiff = bigBefore.data.filter((v, i) => bigBefore.palette[v] !== bigAfte
 check(bigDiff === 0 && !bigAfter.palette.includes('minecraft:glass'), `abgebrochener Bau vollständig zurückgesetzt (${bigDiff} Abweichungen von ${bigBefore.data.length})`)
 const diff = before.data.filter((_, i) => before.palette[before.data[i]] !== restored.palette[restored.data[i]]).length
 check(diff === 0, `nach allen Rückgängig ist der Bereich wie vorher (${diff} Abweichungen von ${before.data.length})`)
-const none = await fetch(base + '/api/undo', { method: 'POST', headers: { 'X-MCPainter-Token': token } })
-check(none.status === 404, `nichts mehr rückgängig zu machen: ${none.status}`)
+// Gab es schon vorher Bauten in der Testwelt, bleiben die stehen; sonst darf es nichts mehr zum Rückgängigmachen geben
+if (hello.undoCount === 0) {
+  const none = await fetch(base + '/api/undo', { method: 'POST', headers: { 'X-MCPainter-Token': token } })
+  check(none.status === 404, `nichts mehr rückgängig zu machen: ${none.status}`)
+} else check((await api('GET', '/api/hello')).undoCount === hello.undoCount, `Bau-Historie wie vorher (${hello.undoCount} ältere Bauten)`)
+
+// --- Abriss-Markierung (Editor schickt nur Änderungen; gelöschte Blöcke als „mcpainter:remove“) ---
+const RX = X + 14
+await waitJob(await api('POST', '/api/build?overwrite=all', plan([[RX, Y + 10, Z, 'minecraft:gold_block']])))
+const rm = await waitJob(await api('POST', '/api/build?overwrite=all&clearAir=false', plan([[RX, Y + 10, Z, 'mcpainter:remove']])))
+check(rm.unknownBlocks.length === 0 && rm.placed === 1 && (await region(RX, Y + 10, Z, RX, Y + 10, Z)).at(RX, Y + 10, Z) === 'minecraft:air',
+  `Abriss-Markierung setzt Luft (gesetzt ${rm.placed}, unbekannt: ${rm.unknownBlocks})`)
+await waitJob(await api('POST', '/api/undo'))
+await waitJob(await api('POST', '/api/undo'))
+builds -= 2
 
 // --- Etappe 3: Modpack-Anbindung ---
 const catalog = (await api('GET', '/api/blocks')).blocks

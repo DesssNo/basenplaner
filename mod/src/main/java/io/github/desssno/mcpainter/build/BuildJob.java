@@ -9,6 +9,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Clearable;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -32,6 +33,9 @@ public final class BuildJob extends Job {
         ALL
     }
 
+    /** Palettenname für „hier abreißen“ (siehe Editor, Bau nur der Änderungen). */
+    public static final String REMOVE = "mcpainter:remove";
+
     private final ServerLevel level;
     private final SpongeSchematic schem;
     private final BlockState[] states;
@@ -51,9 +55,16 @@ public final class BuildJob extends Job {
         this.overwrite = overwrite;
         this.undo = new UndoStore.Record(level.dimension().location().toString());
         states = new BlockState[schem.palette().length];
+        boolean[] remove = new boolean[states.length];
         for (int i = 0; i < states.length; i++) {
             String name = schem.palette()[i];
             if (name == null) continue;
+            // Der Editor markiert so Blöcke, die gebaut waren und im Plan gelöscht wurden: dort Luft setzen
+            if (name.equals(REMOVE)) {
+                states[i] = Blocks.AIR.defaultBlockState();
+                remove[i] = true;
+                continue;
+            }
             try {
                 states[i] = BlockStateParser.parseForBlock(BuiltInRegistries.BLOCK.asLookup(), name, false).blockState();
             } catch (CommandSyntaxException e) {
@@ -63,7 +74,7 @@ public final class BuildJob extends Job {
         int[] data = schem.data();
         order = BuildOrder.of(schem, i -> {
             BlockState s = states[data[i]];
-            return s != null && (clearAir || !s.isAir());
+            return s != null && (clearAir || remove[data[i]] || !s.isAir());
         });
         total = order.length;
         skipped = 0;

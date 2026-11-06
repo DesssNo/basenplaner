@@ -67,6 +67,9 @@ export class Project {
     this.paletteIndex = new Map()
     this.layers = new Map() // y -> Layer
     this.zones = [] // { id, name, color, x1, z1, x2, z2 }
+    // Bau-Stand pro Welt ("Weltname|Dimension" -> Project): was zuletzt mit dem MCPainter-Mod gebaut wurde,
+    // damit beim nächsten Bau nur Änderungen geschickt werden
+    this.built = {}
     this.undoStack = []
     this.redoStack = []
     this.tx = null
@@ -180,7 +183,8 @@ export class Project {
       for (const [key, c] of layer.chunks) chunks[key] = toBase64(new Uint8Array(c.data.buffer))
       layers.push({ y: layer.y, visible: layer.visible, chunks })
     }
-    return { format: 'basenplaner', version: 1, name: this.name, seed: this.seed, palette: this.palette.slice(1), layers, zones: this.zones }
+    const built = Object.fromEntries(Object.entries(this.built).map(([k, p]) => [k, p.toJSON()]))
+    return { format: 'basenplaner', version: 1, name: this.name, seed: this.seed, palette: this.palette.slice(1), layers, zones: this.zones, built }
   }
 
   static fromJSON(json) {
@@ -201,6 +205,9 @@ export class Project {
       }
     }
     p.zones = json.zones ?? []
+    for (const [k, b] of Object.entries(json.built ?? {})) {
+      try { p.built[k] = Project.fromJSON(b) } catch { /* kaputter Bau-Stand: dann eben alles neu bauen */ }
+    }
     return p
   }
 }

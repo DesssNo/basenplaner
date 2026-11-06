@@ -15,6 +15,8 @@ import { View3D } from './view3d.js'
 /* global __WORKER_SOURCE__ */
 const $ = s => document.querySelector(s)
 const MIN_Y = -64, MAX_Y = 319
+// Markierung im Bau-Transport: hier stand gebaut ein Block, der im Plan gelöscht wurde → Mod setzt Luft
+const REMOVE = 'mcpainter:remove'
 const ZONE_COLORS = ['#f2c14e', '#5bc0eb', '#e55934', '#9bc53d', '#c879ff', '#fa7921', '#4ecdc4', '#ff6b9a']
 const DATA_VERSIONS = [
   ['26.3', 5023], ['1.21.5', 4325], ['1.21.4', 4189], ['1.21.1', 3955], ['1.20.4', 3700], ['1.20.1', 3465],
@@ -271,11 +273,16 @@ class App {
     if (!hello.inWorld) return this.toast('In Minecraft ist gerade keine Welt geöffnet.', 5000)
     if (!hello.canBuild) return this.toast('Bauen dürfen nur der Welt-Besitzer oder OPs.', 5000)
     const size = [b.x2 - b.x1 + 1, b.y2 - b.y1 + 1, b.z2 - b.z1 + 1]
-    const count = this.project.materials().reduce((n, [, c]) => n + c, 0)
     const hidden = [...this.project.layers.values()].filter(l => !l.visible && l.count).length
+    const key = `${hello.world}|${hello.dimension}`
+    const diff = this.buildDiff(key)
+    const n = v => v.toLocaleString('de-DE')
     const r = await this.dialog('In Minecraft bauen', `
-      <p class="hint">${count.toLocaleString('de-DE')} Blöcke · Größe ${size.join(' × ')} · Ecke bei X ${b.x1}, Y ${b.y1}, Z ${b.z1}<br>
+      <p class="hint">Größe ${size.join(' × ')} · Ecke bei X ${b.x1}, Y ${b.y1}, Z ${b.z1}<br>
       Welt „${esc(hello.world)}“, ${esc(hello.dimension ?? '')}${hidden ? ` · ${hidden} ausgeblendete Ebene(n) werden nicht gebaut` : ''}</p>
+      <p><b>${n(diff.changed.length)}</b> neue oder geänderte Blöcke${diff.same ? ` · ${n(diff.same)} schon gebaut (werden nicht neu gesetzt)` : ''}</p>
+      ${diff.removed.length ? `<label class="check"><input type="checkbox" name="demolish" checked> ${n(diff.removed.length)} im Plan gelöschte Blöcke in der Welt abreißen</label>` : ''}
+      ${diff.same ? '<label class="check"><input type="checkbox" name="rebuild"> Alles neu bauen (z. B. wenn du in der Welt von Hand etwas verändert hast)</label>' : ''}
       <label class="field"><span>Bestehende Blöcke in der Welt</span><select name="overwrite">
         <option value="all">überschreiben</option>
         <option value="air_fluids">nur Luft und Wasser/Lava ersetzen</option>
@@ -286,18 +293,68 @@ class App {
     [['cancel', 'Abbrechen'], ['ok', 'Bauen', true]])
     if (r !== 'ok') return
     const form = $('#dialog form')
-    const query = `overwrite=${form.overwrite.value}&clearAir=${form.clearAir.checked}`
+    const clearAir = form.clearAir.checked
+    const rebuild = form.rebuild?.checked || clearAir // „Luft räumt frei“ braucht den ganzen Bauraum
+    const demolish = !!form.demolish?.checked
+    const todo = rebuild ? this.buildDiff(key, true) : diff
+    if (!todo.changed.length && !(demolish && todo.removed.length)) return this.toast('Nichts zu bauen – alles ist schon so gebaut.')
+    const query = `overwrite=${form.overwrite.value}&clearAir=${clearAir}`
     try {
-      // Der Schematic-Exporter dient als Transportformat; 1.21.1 = DataVersion 3955
-      const { bytes } = exportSponge(this.project, { dataVersion: 3955, name: this.fileName() })
-      this.showJob(await this.bridge.post('/api/build?' + query, bytes))
+      // Nur die Änderungen als Schematic schicken (der Exporter dient als Transportformat; 1.21.1 = DataVersion 3955).
+      // Gelöschte Blöcke tragen die Markierung „mcpainter:remove“, der Mod setzt dort Luft.
+      const p = rebuild && !demolish ? this.project : new Project()
+      if (p !== this.project) {
+        for (const [y, x, z, id] of todo.changed) p.set(y, x, z, p.blockIndex(id))
+        if (demolish) for (const [y, x, z] of todo.removed) p.set(y, x, z, p.blockIndex(REMOVE))
+      }
+      const { bytes } = exportSponge(p, { dataVersion: 3955, name: this.fileName() })
+      const job = await this.bridge.post('/api/build?' + query, bytes)
+      this.showJob(job, () => this.markBuilt(key, todo, demolish))
     } catch (e) {
       this.toast(e.message, 6000)
     }
   }
 
-  // Fortschritt eines Bau- oder Rückgängig-Auftrags
-  async showJob(job) {
+  // Unterschied zwischen Plan und Bau-Stand dieser Welt: neue/geänderte Blöcke, im Plan gelöschte, unveränderte
+  buildDiff(key, all = false) {
+    const snap = all ? null : this.project.built[key]
+    const changed = [], removed = []
+    let same = 0
+    for (const layer of this.project.layers.values()) {
+      if (!layer.visible) continue
+      for (const [x, z, v] of layer.cells()) {
+        const id = this.project.palette[v]
+        if (snap && snap.palette[snap.get(layer.y, x, z)] === id) same++
+        else changed.push([layer.y, x, z, id])
+      }
+    }
+    const built = this.project.built[key]
+    if (built) {
+      for (const layer of built.layers.values()) {
+        if (this.project.layer(layer.y)?.visible === false) continue // ausgeblendet = nicht anfassen
+        for (const [x, z] of layer.cells()) if (!this.project.get(layer.y, x, z)) removed.push([layer.y, x, z])
+      }
+    }
+    return { changed, removed, same }
+  }
+
+  // Nach einem fertigen Bau: Bau-Stand nachführen; gibt eine Funktion zurück, die das wieder zurücknimmt (Rückgängig)
+  markBuilt(key, todo, demolish) {
+    const snap = this.project.built[key] ??= new Project()
+    const before = []
+    const put = (y, x, z, v) => { before.push([y, x, z, snap.get(y, x, z)]); snap.set(y, x, z, v) }
+    for (const [y, x, z, id] of todo.changed) put(y, x, z, snap.blockIndex(id))
+    if (demolish) for (const [y, x, z] of todo.removed) put(y, x, z, 0)
+    this.scheduleSave()
+    return () => {
+      for (let i = before.length - 1; i >= 0; i--) snap.set(...before[i])
+      this.scheduleSave()
+    }
+  }
+
+  // Fortschritt eines Bau- oder Rückgängig-Auftrags. onDone läuft, wenn der Bau fertig ist (auch bei geschlossenem
+  // Dialog) und darf eine Funktion zurückgeben, die es bei „Rückgängig“ wieder zurücknimmt.
+  async showJob(job, onDone) {
     const dlg = $('#dialog')
     const undo = job.kind === 'undo'
     const finished = j => ['done', 'cancelled', 'failed'].includes(j.state)
@@ -316,23 +373,31 @@ class App {
       }
     }
     const closed = this.dialog(undo ? 'Rückgängig' : 'Bau in Minecraft', '', [['stop', 'Abbrechen'], ['close', 'Im Hintergrund weiter', true]])
-    let current = job
+    let current = job, open = true, revert = null
     render(current)
-    const timer = setInterval(async () => {
-      try {
-        current = await this.bridge.get('/api/build/' + job.jobId)
-        render(current)
-        if (finished(current)) clearInterval(timer)
-      } catch (e) {
-        clearInterval(timer)
-        dlg.querySelector('.body').insertAdjacentHTML('beforeend', `<p class="hint">${esc(e.message)}</p>`)
+    // Abfragen läuft weiter, auch wenn der Dialog „im Hintergrund“ geschlossen wird
+    ;(async () => {
+      while (!finished(current)) {
+        await new Promise(res => setTimeout(res, 400))
+        try {
+          current = await this.bridge.get('/api/build/' + job.jobId)
+        } catch (e) {
+          if (open) dlg.querySelector('.body').insertAdjacentHTML('beforeend', `<p class="hint">${esc(e.message)}</p>`)
+          return
+        }
+        if (open) render(current)
       }
-    }, 400)
+      if (current.state === 'done' && onDone) revert = onDone()
+      if (!open && current.state === 'done' && !undo) this.toast(`Bau fertig: ${current.placed.toLocaleString('de-DE')} Blöcke gesetzt.`, 4000)
+    })()
     const r = await closed
-    clearInterval(timer)
+    open = false
     try {
       if (r === 'stop' && !finished(current)) await this.bridge.post(`/api/build/${job.jobId}/cancel`)
-      if (r === 'undo') this.showJob(await this.bridge.post('/api/undo'))
+      if (r === 'undo') {
+        revert?.()
+        this.showJob(await this.bridge.post('/api/undo'))
+      }
     } catch (e) {
       this.toast(e.message, 6000)
     }
